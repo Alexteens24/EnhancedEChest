@@ -4,11 +4,11 @@
 language: en_US
 
 database:
-  # Storage backend: sqlite | mysql | postgres
+  # Storage backend: sqlite | mysql | mariadb | postgres
   type: sqlite
   # SQLite: path relative to plugin data folder (default: enderchests.db)
   sqlite-file: enderchests.db
-  # MySQL/Postgres (unused until Phase 4)
+  # MySQL/MariaDB default port: 3306 | Postgres default port: 5432
   host: localhost
   port: 3306
   database: enhancedechest

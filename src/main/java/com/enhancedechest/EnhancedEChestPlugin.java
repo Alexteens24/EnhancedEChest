@@ -11,6 +11,8 @@ import com.enhancedechest.migration.MigrationService;
 import com.enhancedechest.serialization.ContainerCodec;
 import com.enhancedechest.storage.EnderChestStorage;
 import com.enhancedechest.storage.StorageFactory;
+import com.enhancedechest.update.UpdateChecker;
+import com.enhancedechest.update.UpdateNotifyListener;
 import lombok.Getter;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.slf4j.Logger;
@@ -24,6 +26,7 @@ public final class EnhancedEChestPlugin extends JavaPlugin {
     private EnderChestStorage storage;
     private EnderChestService enderChestService;
     private MigrationService migrationService;
+    private UpdateChecker updateChecker;
 
     @Override
     public void onEnable() {
@@ -50,6 +53,10 @@ public final class EnhancedEChestPlugin extends JavaPlugin {
         pm.registerEvents(new EnderChestGuiListener(enderChestService), this);
         pm.registerEvents(new PlayerQuitListener(enderChestService), this);
         pm.registerEvents(new JoinMigrationListener(pluginConfig, migrationService), this);
+
+        updateChecker = new UpdateChecker(getPluginMeta().getVersion(), getSLF4JLogger());
+        pm.registerEvents(new UpdateNotifyListener(this, updateChecker, languageManager), this);
+        updateChecker.checkAsync(this);
 
         printStartupBanner(getSLF4JLogger());
     }

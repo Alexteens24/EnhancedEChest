@@ -9,7 +9,7 @@ configurations {
 }
 
 group = "com.enhancedechest"
-version = "1.0.0"
+version = "1.0.1"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(21))
@@ -26,6 +26,7 @@ dependencies {
     // Shaded and relocated — no server-side drivers required
     shade("com.zaxxer:HikariCP:7.1.0")
     shade("org.mariadb.jdbc:mariadb-java-client:3.5.3")   // compatible with MySQL 5.7+ and 8.x
+    shade("org.postgresql:postgresql:42.7.4")
 
     // Paper bundles sqlite-jdbc on the server classpath; compileOnly is sufficient
     compileOnly("org.xerial:sqlite-jdbc:3.53.2.0")
@@ -61,6 +62,8 @@ tasks.shadowJar {
 
     relocate("com.zaxxer.hikari", "com.enhancedechest.libs.hikari")
     relocate("org.mariadb.jdbc", "com.enhancedechest.libs.mariadb")
+    relocate("org.postgresql",   "com.enhancedechest.libs.postgresql")
+    relocate("com.ongres",       "com.enhancedechest.libs.ongres")
 
     mergeServiceFiles()
     // destinationDirectory.set(file("C:\\Users\\Admin\\Desktop\\TestServer\\plugins"))

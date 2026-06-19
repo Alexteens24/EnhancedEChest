@@ -17,3 +17,7 @@ migrate:
 
 admin:
   reload-success: '{prefix}<green>Configuration reloaded.'
+
+update:
+  available: '{prefix}<yellow>New update available! <gray>(<white>{current} <dark_gray>→ <green>{latest}<gray>)'
+  download: '{prefix}<gray>Download: <click:open_url:{url}><aqua>{url}</aqua></click>'
