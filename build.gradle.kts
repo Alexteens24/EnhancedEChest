@@ -4,7 +4,7 @@ plugins {
     id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
-val shade: Configuration by configurations.creating
+val shade: Configuration = configurations.create("shade")
 configurations {
     implementation.get().extendsFrom(shade)
 }
@@ -19,6 +19,8 @@ java {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+
+    // Folia library repository
     maven {
         name = "tcoded-releases"
         url = uri("https://repo.tcoded.com/releases")

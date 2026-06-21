@@ -93,7 +93,17 @@ public final class ChestDialogs {
                 .base(DialogBase.builder(lang.getGui("dialog.list-title"))
                         .body(List.of(DialogBody.plainMessage(lang.getGui("dialog.list-body"), BODY_WIDTH)))
                         .build())
-                .type(DialogType.multiAction(buttons, close, 1)));
+                .type(DialogType.multiAction(buttons, close, columnsFor(buttons.size()))));
+    }
+
+    /**
+     * Chest-list grid width: keep a single familiar column for short lists, but fan wider lists out
+     * into multiple columns so they use the horizontal space instead of forcing a tall scrollbar.
+     */
+    private static int columnsFor(int count) {
+        if (count <= 7) return 1;
+        if (count <= 14) return 2;
+        return 3;
     }
 
     /**

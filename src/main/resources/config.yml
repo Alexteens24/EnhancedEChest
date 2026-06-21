@@ -38,5 +38,8 @@ database:
   pool-size: 10
 
 migration:
-  # When true: un-migrated players have their vanilla enderchest imported on join
+  # When true: un-migrated players have their vanilla enderchest imported on join.
+  # Note: changing this to true and reloading does NOT migrate players already online —
+  # migration only fires on the join event, so current players must rejoin to be migrated
+  # (or use "/ee migrate run <player>" / "/ee migrate run all" for online players).
   enabled: false
