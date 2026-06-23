@@ -56,4 +56,4 @@ dialog:
   icon-search-label: '<white>Tìm'
   icon-search: '<white>Tìm'
   icon-default: '<white>Mặc định'
-  icon-default-desc: '<white>Dùng biểu tượng rương ender mặc định.'
+  icon-default-desc: '<white>Hiển thị rương này không có biểu tượng.'

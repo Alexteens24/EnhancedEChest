@@ -56,4 +56,4 @@ dialog:
   icon-search-label: '<white>Search'
   icon-search: '<white>Search'
   icon-default: '<white>Default'
-  icon-default-desc: '<white>Use the default ender-chest icon.'
+  icon-default-desc: '<white>Show this chest with no icon.'
