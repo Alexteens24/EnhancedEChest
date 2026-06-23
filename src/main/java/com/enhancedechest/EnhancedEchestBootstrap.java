@@ -33,7 +33,7 @@ public final class EnhancedEchestBootstrap implements PluginBootstrap {
     private static final String OPEN_GUI_PERMISSION = "enhancedechest.command.open";
     // Admin commands require the base node AND the command-specific node. Brigadier enforces both:
     // the root literal checks the base, each subcommand checks its own node.
-    private static final String ADMIN_BASE_PERMISSION = "enhancedechest.admin";
+    private static final String ADMIN_BASE_PERMISSION = "enhancedechest.command.admin";
     private static final String ADMIN_RELOAD_PERMISSION = "enhancedechest.admin.reload";
     private static final String ADMIN_MIGRATE_PERMISSION = "enhancedechest.admin.migrate.run";
     private static final String ADMIN_ADD_PERMISSION = "enhancedechest.admin.add";

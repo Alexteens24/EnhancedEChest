@@ -66,6 +66,11 @@ const copyToClipboard = async (text) => {
 .perm-row:last-child { border-bottom: none; }
 .perm-row:hover { background-color: var(--vp-c-bg-mute); }
 
+/* Without min-width:0 a grid column defaults to min-width:auto, so a long
+   no-wrap permission badge forces its track wider than the wrapper, and the
+   wrapper's overflow:hidden then crops the Description/Default columns. */
+.col-perm, .col-desc, .col-default { min-width: 0; }
+
 .mobile-label { display: none; }
 
 .col-desc {
@@ -90,7 +95,9 @@ const copyToClipboard = async (text) => {
 .badge.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
 .badge.clickable:active { transform: translateY(0); }
 
-.perm-badge { background-color: var(--vp-c-indigo-soft); color: var(--vp-c-indigo-1); }
+/* Long permission nodes must be allowed to wrap inside their column instead of
+   overflowing it (overriding the shared .badge nowrap). */
+.perm-badge { background-color: var(--vp-c-indigo-soft); color: var(--vp-c-indigo-1); white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
 .perm-badge.is-copied { background-color: var(--vp-c-indigo-1) !important; color: white !important; }
 
 .badge.is-copied::after { content: 'Copied!'; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background-color: var(--vp-c-text-1); color: var(--vp-c-bg); padding: 4px 8px; border-radius: 4px; font-family: var(--vp-font-family-base); font-size: 0.75rem; font-weight: bold; pointer-events: none; animation: popIn 0.2s forwards; }

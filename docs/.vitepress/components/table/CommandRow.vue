@@ -56,7 +56,7 @@ const copyToClipboard = async (text) => {
           class="badge alias-badge clickable"
           :class="{ 'is-copied': copiedItem === alias }"
           @click="copyToClipboard(alias)"
-          title="Alias — click to copy"
+          title="Alias (click to copy)"
         >{{ alias }}</span>
       </div>
       <div v-if="permission" class="perm-line">

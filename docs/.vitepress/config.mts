@@ -8,8 +8,12 @@ export default defineConfig({
   base: '/EnhancedEchest/',
   cleanUrls: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }],
-    ['link', { rel: 'apple-touch-icon', href: '/logo.png' }],
+    // Entries in `head` are emitted verbatim, so the `base` is NOT prepended
+    // automatically the way it is for themeConfig.logo / markdown links. The
+    // href must therefore include the base path, otherwise on the GitHub Pages
+    // project site the favicon resolves to the domain root and 404s.
+    ['link', { rel: 'icon', type: 'image/png', href: '/EnhancedEchest/logo.png' }],
+    ['link', { rel: 'apple-touch-icon', href: '/EnhancedEchest/logo.png' }],
   ],
   themeConfig: {
     logo: '/logo.png',

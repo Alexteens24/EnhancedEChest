@@ -54,7 +54,7 @@ feature stops syncing but leaves existing PERM chests in place. No schema change
 
 ## Admin commands (`/enhancedechest`, alias `/ee` — `command/admin/`)
 
-Root requires `enhancedechest.admin`; each subcommand additionally requires its own node (Brigadier
+Root requires `enhancedechest.command.admin`; each subcommand additionally requires its own node (Brigadier
 checks both).
 
 | Subcommand | Permission | Action |
@@ -95,7 +95,7 @@ owner operations) — see [ui-dialogs.md](ui-dialogs.md).
 enhancedechest.command.open       open /ec, /eclist, "set as main"
 enhancedechest.additional_amount.<count>.slot.<size>
                                   grant <count> chests of <size> slots (stacks; no op default)
-enhancedechest.admin              root for all admin subcommands
+enhancedechest.command.admin      root for all admin subcommands
 enhancedechest.admin.reload
 enhancedechest.admin.migrate.run
 enhancedechest.admin.add

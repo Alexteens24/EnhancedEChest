@@ -1,6 +1,13 @@
 # Welcome to EnhancedEchest
 
-**EnhancedEchest** is a free, open-source Minecraft plugin that upgrades the vanilla ender chest into a larger, persistent, multi-chest storage system. Instead of three cramped rows that live inside a single player file, every player gets ender chests of up to **54 slots** — saved to a real database so the contents survive restarts, world resets, and server migrations.
+**EnhancedEchest** is a free, open-source Minecraft plugin that upgrades the vanilla ender chest into a larger, persistent, multi-chest storage system. Instead of three cramped rows that live inside a single player file, every player gets ender chests of up to **54 slots**, saved to a real database so the contents survive restarts, world resets, and server migrations.
+
+<!-- TODO(showcase): replace this box with a screenshot or GIF showing the plugin overview. -->
+<div class="showcase-placeholder">
+  <span class="sp-icon">🎬</span>
+  <span class="sp-title">Showcase: EnhancedEchest overview</span>
+  <span class="sp-hint">Drop a banner screenshot or short GIF tour of the plugin here.</span>
+</div>
 
 ## Quick Navigation
 
@@ -25,7 +32,7 @@
 <CardGrid>
 
 <FeatureCard icon="📦" title="More Space">
-The vanilla ender chest holds 27 items. EnhancedEchest gives players a configurable chest of up to 54 slots — a full double chest — opened from the same ender chest block or the <code>/ec</code> command.
+The vanilla ender chest holds 27 items. EnhancedEchest gives players a configurable chest of up to 54 slots (a full double chest) opened from the same ender chest block or the <code>/ec</code> command.
 </FeatureCard>
 
 <FeatureCard icon="🗂️" title="Multiple Chests Per Player">
@@ -33,11 +40,11 @@ Players are no longer limited to a single ender chest. Admins can grant extra ch
 </FeatureCard>
 
 <FeatureCard icon="💾" title="Real Persistence">
-All contents are stored in a database — SQLite out of the box, or MySQL / MariaDB / PostgreSQL for networks. Data is shared cleanly across restarts and, with a shared database, across servers.
+All contents are stored in a database: SQLite out of the box, or MySQL / MariaDB / PostgreSQL for networks. Data is shared cleanly across restarts and, with a shared database, across servers.
 </FeatureCard>
 
 <FeatureCard icon="🛡️" title="Dupe-Proof by Design">
-Contents are loaded fresh when a chest is opened and written immediately when it closes. A pending-save chain guarantees the next open never reads stale data — closing the door on reload-based duplication.
+Contents are loaded fresh when a chest is opened and written immediately when it closes. A pending-save chain guarantees the next open never reads stale data, closing the door on reload-based duplication.
 </FeatureCard>
 
 </CardGrid>

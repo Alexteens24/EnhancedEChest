@@ -46,7 +46,7 @@ Any message that contains a `<` is parsed as [MiniMessage](https://docs.advntr.d
 
 ```yaml
 enderchest:
-  # Title of the first chest (index 1) when it has no custom name — no number shown.
+  # Title of the first chest (index 1) when it has no custom name (no number shown).
   title: 'Ender Chest'
   # Title of chests 2+ when they have no custom name. {index} is the chest number.
   title-numbered: 'Ender Chest {index}'
@@ -56,7 +56,7 @@ enderchest:
 - Chests **#2 and up** show `title-numbered` with their index
 - A chest with a **custom name** (set via `/eclist` → Rename) shows that name instead
 
-The `dialog:` section of `gui.yml` holds the button and label text for the `/eclist` menu — `open`, `rename`, `set-main`, `back`, and so on.
+The `dialog:` section of `gui.yml` holds the button and label text for the `/eclist` menu: `open`, `rename`, `set-main`, `back`, and so on.
 
 ## Adding a translation
 

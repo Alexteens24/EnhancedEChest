@@ -8,7 +8,7 @@ When a player is migrated, their 27 vanilla ender chest slots are copied into th
 
 1. Chest #1 is created at full size if it doesn't exist yet
 2. The vanilla contents are written into the head slots of chest #1
-3. The data is saved to the database, the vanilla ender chest is cleared, and the player is flagged as migrated — all at once
+3. The data is saved to the database, the vanilla ender chest is cleared, and the player is flagged as migrated, all at once
 
 ::: info Single-location guarantee
 There is never a moment where the items exist in both the vanilla ender chest and the plugin database. This makes migration safe against duplication.
