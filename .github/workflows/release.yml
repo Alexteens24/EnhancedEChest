@@ -1,11 +1,17 @@
 name: Release
 
 # Runs when a GitHub Release is published (drafts do not trigger this, you must click
-# "Publish release"). workflow_dispatch lets you run it by hand from the Actions tab.
+# "Publish release"). workflow_dispatch lets you run it by hand from the Actions tab,
+# with a dry-run toggle so you can test the build and validate uploads without publishing.
 on:
   release:
     types: [ published ]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build and validate, but do not publish to Modrinth, Hangar, or Discord"
+        type: boolean
+        default: true
 
 permissions:
   contents: write   # needed to attach the built jar to the release
@@ -17,6 +23,9 @@ env:
   MODRINTH_ID: "xgEWccga"
   # Your project slug on hangar.papermc.io. Verify it matches the project you created.
   HANGAR_SLUG: "EnhancedEchest"
+  # "true" only on a manual dispatch with the dry-run box ticked. A published release
+  # always runs for real ('release' event short-circuits this to "false").
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
 jobs:
   release:
@@ -60,8 +69,10 @@ jobs:
           loaders: paper
           game-versions: ${{ env.GAME_VERSIONS }}
           changelog: ${{ github.event.release.body }}
+          dry-run: ${{ env.DRY_RUN }}
 
       - name: Publish to Hangar
+        if: env.DRY_RUN != 'true'
         uses: milkdrinkers/Hangar-Publish@v2
         with:
           api_token: ${{ secrets.HANGAR_API_TOKEN }}
@@ -76,7 +87,7 @@ jobs:
             { "PAPER": ["26.1", "26.1.1", "26.1.2", "26.2"] }
 
       - name: Announce on Discord
-        if: success()
+        if: success() && env.DRY_RUN != 'true'
         uses: tsickert/discord-webhook@v6.0.0
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK }}
