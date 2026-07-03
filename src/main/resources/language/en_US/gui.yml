@@ -70,3 +70,22 @@ dialog:
   icon-search: '<white>Search'
   icon-default: '<white>Default'
   icon-default-desc: '<white>Show this chest with no icon.'
+
+  # ===== Import dialog (/ee import — copy an old database backend into the active one) =====
+  import-title: '<white>Import from another database'
+  import-body: '<gray>Move data from your old database to the one set in config. The new database must be <white>empty</white> before you start.'
+  # Field labels.
+  import-sqlite-file: '<white>SQLite file'
+  import-host: '<white>Host (host or host:port)'
+  import-database: '<white>Database name'
+  import-username: '<white>Username'
+  import-password: '<white>Password'
+  # Buttons.
+  import-run: '<green>✔ <white>Start import'
+  import-run-desc: '<white>Copy every chest from the source database into the active one.'
+  # Source-type toggle (top button of the column, above Start import + Cancel). Its label shows the
+  # current type and clicking it flips the type; the detail is in the tooltip below. Two types only:
+  # SQLite (a file) or Server (MySQL / MariaDB / PostgreSQL — they share the same form).
+  import-type-sqlite: '<white>Type: <yellow>SQLite'
+  import-type-server: '<white>Type: <yellow>Server'
+  import-type-desc: '<white>Source database type — click to switch.<newline><gray>SQLite reads a file; Server reads a MySQL, MariaDB or PostgreSQL host (use port 5432 for PostgreSQL).'

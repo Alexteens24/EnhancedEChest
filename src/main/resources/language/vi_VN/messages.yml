@@ -37,6 +37,22 @@ migrate:
   import-player-done: '{prefix}&fNhập {source} cho {player}: {vaults} kho đã nhập, {skipped} bỏ qua.'
   import-failed: '{prefix}&fNhập {source} thất bại: {error}'
 
+# Nhập cơ sở dữ liệu sang cơ sở dữ liệu (/ee import) — sao chép backend cũ vào backend đang dùng.
+import:
+  # Kiểm tra biểu mẫu trong hộp thoại trước khi chạy.
+  missing-sqlite-file: '{prefix}&fNhập tệp cơ sở dữ liệu SQLite cần nhập từ đó.'
+  missing-remote-fields: '{prefix}&fNhập host, tên cơ sở dữ liệu và tên đăng nhập của cơ sở dữ liệu nguồn.'
+  invalid-port: '{prefix}&fCổng của cơ sở dữ liệu nguồn không hợp lệ.'
+  invalid-type: '{prefix}&fHãy chọn loại cơ sở dữ liệu nguồn.'
+  # Các bước kiểm tra trước khi chạy.
+  players-online: '{prefix}&fChỉ có thể nhập khi không còn người chơi nào khác trực tuyến. Hãy yêu cầu mọi người thoát ra rồi thử lại.'
+  same-database: '{prefix}&fNguồn chính là cơ sở dữ liệu plugin đang dùng. Hãy trỏ tới backend CŨ thay vào đó.'
+  dest-not-empty: '{prefix}&fCơ sở dữ liệu đang dùng đã có {count} rương. Việc nhập chỉ hoạt động vào một cơ sở dữ liệu mới, trống.'
+  # Tiến trình + kết quả. {source} = loại đã chọn; {players}/{chests} = số hàng đã sao chép.
+  started: '{prefix}&fĐang nhập từ cơ sở dữ liệu {source}… tiến trình chạy nền.'
+  done: '{prefix}&fNhập hoàn tất. Đã sao chép {players} người chơi và {chests} rương vào cơ sở dữ liệu đang dùng.'
+  failed: '{prefix}&fNhập thất bại và không ghi gì cả. Lý do: {error}'
+
 admin:
   reload-success: '{prefix}&fĐã tải lại cấu hình.'
   player-not-found: '{prefix}&fKhông tìm thấy người chơi {player}.'

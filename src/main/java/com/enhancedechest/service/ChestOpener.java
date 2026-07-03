@@ -5,11 +5,14 @@ import com.enhancedechest.gui.EnderChestHolder;
 import com.enhancedechest.gui.dialog.ChestDialogs;
 import com.enhancedechest.gui.dialog.ChestDialogs.DetailContext;
 import com.enhancedechest.lang.LanguageManager;
+import com.enhancedechest.migration.DatabaseImportService;
+import com.enhancedechest.migration.SourceSpec;
 import com.enhancedechest.model.ChestKind;
 import com.enhancedechest.model.ChestSummary;
 import com.enhancedechest.storage.EnderChestStorage;
 import com.enhancedechest.util.DurationFormat;
 import com.tcoded.folialib.FoliaLib;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -60,6 +63,7 @@ public final class ChestOpener {
     private final PermissionChestService permService;
     private final ChestSpillService spillService;
     private final PluginConfig config;
+    private final DatabaseImportService importService;
 
     /** Last time (epoch millis) each player sorted a chest, for the anti-spam Sort cooldown. */
     private final ConcurrentHashMap<UUID, Long> lastSortAt = new ConcurrentHashMap<>();
@@ -73,7 +77,7 @@ public final class ChestOpener {
                        PlayerSettingsCache settings, EnderChestStorage storage, DbExecutor db,
                        LanguageManager lang, FoliaLib foliaLib, Logger logger, int defaultSize,
                        PermissionChestService permService, ChestSpillService spillService,
-                       PluginConfig config) {
+                       PluginConfig config, DatabaseImportService importService) {
         this.sessions       = sessions;
         this.storageGateway = storageGateway;
         this.settings       = settings;
@@ -86,6 +90,7 @@ public final class ChestOpener {
         this.permService    = permService;
         this.spillService   = spillService;
         this.config         = config;
+        this.importService  = importService;
         this.dialogs        = new ChestDialogs(this, storageGateway, settings, lang, config);
     }
 
@@ -514,5 +519,111 @@ public final class ChestOpener {
     /** Runs the given action on the player's entity thread (helper for command/dialog callbacks). */
     public void runForPlayer(Player player, Runnable action) {
         foliaLib.getScheduler().runAtEntity(player, task -> action.run());
+    }
+
+    // ---- database import (/ee import) ----
+
+    /** Shows the DB→DB import dialog (source connection form) to the admin. */
+    public void showImportDialog(Player admin) {
+        foliaLib.getScheduler().runAtEntity(admin, t -> {
+            if (admin.isOnline()) admin.showDialog(dialogs.importDialog());
+        });
+    }
+
+    /** Carries the DB-executor outcome back to the entity thread: dest not empty, or the row counts. */
+    private record ImportOutcome(long existingCount, @Nullable DatabaseImportService.Result result) {}
+
+    /**
+     * Validates the submitted source connection form, runs the pre-flight guards, and — if they pass —
+     * copies the source database into the active backend off the region thread, reporting the result.
+     *
+     * <p>Guards: (1) the form must be complete for its chosen type; (2) no player other than the running
+     * admin may be online (the copy assumes a quiet server); (3) the source must not be the active
+     * destination; (4) the destination must be empty (import only into a fresh DB — checked on the DB
+     * executor). All user-facing text goes through {@link LanguageManager}.
+     */
+    public void performImport(Player admin, SourceSpec spec) {
+        String validationKey = validateSpec(spec);
+        if (validationKey != null) {
+            final String key = validationKey;
+            foliaLib.getScheduler().runAtEntity(admin, t -> {
+                if (admin.isOnline()) admin.sendMessage(lang.get(key));
+            });
+            return;
+        }
+
+        // Run the in-memory guards on the global/next tick so Bukkit.getOnlinePlayers() is read on a safe
+        // thread (the dialog callback may arrive on a region thread under Folia).
+        foliaLib.getScheduler().runNextTick(t -> {
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                if (!online.getUniqueId().equals(admin.getUniqueId())) {
+                    admin.sendMessage(lang.get("import.players-online"));
+                    return;
+                }
+            }
+            if (importService.pointsAtActiveDatabase(spec)) {
+                admin.sendMessage(lang.get("import.same-database"));
+                return;
+            }
+
+            admin.sendMessage(lang.get("import.started", "source", spec.type()));
+            db.supply(() -> {
+                long existing = importService.destinationChestCount();
+                if (existing > 0) {
+                    return new ImportOutcome(existing, null);
+                }
+                try {
+                    return new ImportOutcome(0, importService.importFrom(spec));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).whenComplete((outcome, error) -> foliaLib.getScheduler().runAtEntity(admin, tt -> {
+                if (!admin.isOnline()) return;
+                if (error != null) {
+                    logger.error("[Import] Database import failed", error.getCause() != null ? error.getCause() : error);
+                    admin.sendMessage(lang.get("import.failed", "error", rootMessage(error)));
+                    return;
+                }
+                if (outcome.result() == null) {
+                    admin.sendMessage(lang.get("import.dest-not-empty",
+                            "count", Long.toString(outcome.existingCount())));
+                    return;
+                }
+                admin.sendMessage(lang.get("import.done",
+                        "players", Integer.toString(outcome.result().players()),
+                        "chests", Integer.toString(outcome.result().chests())));
+            }));
+        });
+    }
+
+    /** Returns the language key of the first validation failure for {@code spec}, or null if it is valid. */
+    private @Nullable String validateSpec(SourceSpec spec) {
+        String family = SourceSpec.family(spec.type());
+        switch (family) {
+            case "sqlite" -> {
+                if (isBlank(spec.sqliteFile())) return "import.missing-sqlite-file";
+            }
+            case "mysql", "postgres" -> {
+                if (isBlank(spec.host()) || isBlank(spec.database()) || isBlank(spec.username())) {
+                    return "import.missing-remote-fields";
+                }
+                if (spec.port() <= 0 || spec.port() > 65535) return "import.invalid-port";
+            }
+            default -> {
+                return "import.invalid-type";
+            }
+        }
+        return null;
+    }
+
+    private static boolean isBlank(@Nullable String s) {
+        return s == null || s.isBlank();
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null) cause = cause.getCause();
+        String msg = cause.getMessage();
+        return msg != null ? msg : cause.getClass().getSimpleName();
     }
 }

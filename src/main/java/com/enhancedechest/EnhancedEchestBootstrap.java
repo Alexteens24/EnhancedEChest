@@ -5,6 +5,7 @@ import com.enhancedechest.command.admin.ChestAdminCommand;
 import com.enhancedechest.command.admin.MigrateAxVaultsCommand;
 import com.enhancedechest.command.admin.MigratePlayerVaultsXCommand;
 import com.enhancedechest.command.admin.ChestTransferCommand;
+import com.enhancedechest.command.admin.ImportCommand;
 import com.enhancedechest.command.admin.MigrateVanillaCommand;
 import com.enhancedechest.command.admin.ReloadCommand;
 import com.mojang.brigadier.LiteralMessage;
@@ -42,6 +43,7 @@ public final class EnhancedEchestBootstrap implements PluginBootstrap {
     private static final String ADMIN_RESIZE_PERMISSION = "enhancedechest.admin.resize";
     private static final String ADMIN_DELETE_PERMISSION = "enhancedechest.admin.delete";
     private static final String ADMIN_TRANSFER_PERMISSION = "enhancedechest.admin.transfer";
+    private static final String ADMIN_IMPORT_PERMISSION = "enhancedechest.admin.import";
     // /ee view requires this; modifying (take/add) further requires enhancedechest.admin.edit,
     // checked per-click in EnderChestGuiListener so a view-only admin can look but not touch.
     private static final String ADMIN_VIEW_PERMISSION = "enhancedechest.admin.view";
@@ -409,6 +411,10 @@ public final class EnhancedEchestBootstrap implements PluginBootstrap {
                         .then(Commands.literal("reload")
                                 .requires(src -> src.getSender().hasPermission(ADMIN_RELOAD_PERMISSION))
                                 .executes(ctx -> ReloadCommand.execute(ctx.getSource())))
+                        // /ee import — open the DB→DB import dialog (copy an old backend into the active one).
+                        .then(Commands.literal("import")
+                                .requires(src -> src.getSender().hasPermission(ADMIN_IMPORT_PERMISSION))
+                                .executes(ctx -> ImportCommand.execute(ctx.getSource())))
                         // /ee add <player> <size> [count] [duration] — a single linear chain so each
                         // node has one argument child (two sibling argument children break Brigadier's
                         // suggestions, since word() matches the empty trailing token).

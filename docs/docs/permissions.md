@@ -39,6 +39,8 @@ Each `/ee` command requires only its own node. There is no separate base permiss
 
 **`enhancedechest.admin.migrate`** - `/ee migrate vanilla`, `/ee migrate axvaults`, and `/ee migrate playervaultsx`: import data from vanilla ender chests, the AxVaults plugin, or the PlayerVaultsX plugin.
 
+**`enhancedechest.admin.import`** - `/ee import`: copy all data from an old database backend into the active one.
+
 ::: tip
 To grant full admin access in one go, give `enhancedechest.admin.*` (if your permission plugin supports wildcards).
 :::

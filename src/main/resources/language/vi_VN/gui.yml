@@ -70,3 +70,22 @@ dialog:
   icon-search: '<white>Tìm'
   icon-default: '<white>Mặc định'
   icon-default-desc: '<white>Hiển thị rương này không có biểu tượng.'
+
+  # ===== Hộp thoại nhập (/ee import — sao chép backend cơ sở dữ liệu cũ vào backend đang dùng) =====
+  import-title: '<white>Nhập từ cơ sở dữ liệu khác'
+  import-body: '<gray>Chuyển dữ liệu từ cơ sở dữ liệu cũ sang cơ sở dữ liệu đã đặt trong config. Cơ sở dữ liệu mới phải <white>trống</white> trước khi bắt đầu.'
+  # Nhãn các trường.
+  import-sqlite-file: '<white>Tệp SQLite'
+  import-host: '<white>Host (host hoặc host:port)'
+  import-database: '<white>Tên cơ sở dữ liệu'
+  import-username: '<white>Tên đăng nhập'
+  import-password: '<white>Mật khẩu'
+  # Các nút.
+  import-run: '<green>✔ <white>Bắt đầu nhập'
+  import-run-desc: '<white>Sao chép mọi rương từ cơ sở dữ liệu nguồn vào cơ sở dữ liệu đang dùng.'
+  # Nút chọn loại nguồn (nút trên cùng của cột, trên nút Bắt đầu nhập + Hủy). Nhãn hiển thị loại hiện tại và
+  # bấm vào để chuyển loại; chi tiết nằm trong tooltip bên dưới. Chỉ 2 loại: SQLite (một tệp) hoặc Máy chủ
+  # (MySQL / MariaDB / PostgreSQL — dùng chung một biểu mẫu).
+  import-type-sqlite: '<white>Loại: <yellow>SQLite'
+  import-type-server: '<white>Loại: <yellow>Máy chủ'
+  import-type-desc: '<white>Loại cơ sở dữ liệu nguồn — bấm để đổi.<newline><gray>SQLite đọc một tệp; Máy chủ đọc host MySQL, MariaDB hoặc PostgreSQL (dùng cổng 5432 cho PostgreSQL).'

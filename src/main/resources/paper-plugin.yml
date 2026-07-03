@@ -18,6 +18,9 @@ permissions:
   enhancedechest.admin.migrate:
     description: Use /ee migrate vanilla and /ee migrate axvaults
     default: op
+  enhancedechest.admin.import:
+    description: Use /ee import (copy an old database backend into the active one)
+    default: op
   enhancedechest.admin.add:
     description: Use /ee add
     default: op

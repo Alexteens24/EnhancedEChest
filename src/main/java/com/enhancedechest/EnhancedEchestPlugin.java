@@ -12,6 +12,7 @@ import com.enhancedechest.listener.PlayerQuitListener;
 import com.enhancedechest.listener.PlayerSettingsListener;
 import com.enhancedechest.listener.VanillaEnderChestListener;
 import com.enhancedechest.migration.AxVaultsMigrationService;
+import com.enhancedechest.migration.DatabaseImportService;
 import com.enhancedechest.migration.MigrationService;
 import com.enhancedechest.migration.PlayerVaultsXMigrationService;
 import com.enhancedechest.serialization.ContainerCodec;
@@ -53,6 +54,7 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
     private ChestSpillService spillService;
     private ChestTransferService chestTransferService;
     private PermissionChestService permissionChestService;
+    private DatabaseImportService databaseImportService;
     private ChestOpener chestOpener;
     private ExpirySweeper expirySweeper;
     private BackupService backupService;
@@ -99,9 +101,11 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
                 languageManager, foliaLib, dbExecutor, getSLF4JLogger(), pluginConfig.getTempExpiryMillis());
         permissionChestService = new PermissionChestService(storageGateway, spillService,
                 pluginConfig.isPermissionChestsEnabled(), pluginConfig.getDefaultSize());
+        databaseImportService = new DatabaseImportService(storage, pluginConfig, getSLF4JLogger(),
+                getDataFolder().toPath());
         chestOpener    = new ChestOpener(sessionManager, storageGateway, settingsCache, storage,
                 dbExecutor, languageManager, foliaLib, getSLF4JLogger(), pluginConfig.getDefaultSize(),
-                permissionChestService, spillService, pluginConfig);
+                permissionChestService, spillService, pluginConfig, databaseImportService);
 
         migrationService  = new MigrationService(storage, codec, getSLF4JLogger());
         axVaultsMigrationService = new AxVaultsMigrationService(storage, codec, getSLF4JLogger(),

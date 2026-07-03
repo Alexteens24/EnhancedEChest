@@ -15,6 +15,7 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
+import com.enhancedechest.migration.SourceSpec;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickCallback;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -61,6 +62,23 @@ public final class ChestDialogs {
 
     /** Key of the list dialog's edit-mode checkbox, read at click time to route chest buttons. */
     private static final String EDIT_MODE_INPUT = "edit_mode";
+
+    // Import dialog input keys (the DB→DB conversion source-connection form). Host and port share one
+    // "host[:port]" field to keep the remote form short. The type is chosen with the cycle button below
+    // the inputs, which re-pushes the form so only the chosen type's fields are shown.
+    private static final String IMPORT_SQLITE_FILE_INPUT = "import_sqlite_file";
+    private static final String IMPORT_HOSTPORT_INPUT = "import_hostport";
+    private static final String IMPORT_DATABASE_INPUT = "import_database";
+    private static final String IMPORT_USERNAME_INPUT = "import_username";
+    private static final String IMPORT_PASSWORD_INPUT = "import_password";
+
+    /** Source backend ids, in the order the source-type selector cycles through them. */
+    private static final String[] IMPORT_TYPE_IDS = {"sqlite", "mysql", "mariadb", "postgres"};
+
+    private static final int IMPORT_INPUT_WIDTH = 220;
+    /** Full width: buttons stack in a single column (columns = 1), aligned with the inputs above. */
+    private static final int IMPORT_BUTTON_WIDTH = IMPORT_INPUT_WIDTH;
+    private static final int IMPORT_FIELD_MAX_LENGTH = 256;
 
     private final ChestOpener opener;
     private final StorageGateway storageGateway;
@@ -476,6 +494,175 @@ public final class ChestDialogs {
                         .inputs(List.of(nameInput))
                         .build())
                 .type(DialogType.multiAction(List.of(save, cancel), null, 1)));
+    }
+
+    /**
+     * DB→DB import dialog ({@code /ee import}), no-arg entry point — opens the form with SQLite selected.
+     */
+    public Dialog importDialog() {
+        return importDialog(defaultImportSpec());
+    }
+
+    /**
+     * DB→DB import dialog for a given (in-progress) {@link SourceSpec}. The Dialog API is static, so the
+     * form <i>adapts to the type</i> by being rebuilt: only the chosen type's fields are shown. The type
+     * is a simple two-way toggle — <b>SQLite</b> (a file) or <b>Server</b> (a MySQL/MariaDB/PostgreSQL
+     * host) — because the three server engines share the exact same connection form; the concrete engine
+     * is resolved from the port on submit (5432 → PostgreSQL, otherwise MySQL/MariaDB). The type button is
+     * shown <i>above</i> Start import and Cancel; clicking it reads whatever has been typed, flips the
+     * type, and re-pushes this dialog, so typed values survive the switch.
+     *
+     * <p>The password is a plain text input, so it is visible on screen while typing — documented in the
+     * database docs, so the dialog itself does not repeat the warning.
+     */
+    public Dialog importDialog(SourceSpec spec) {
+        String typeId = normalizeTypeId(spec.type());
+        boolean server = !SourceSpec.family(typeId).equals("sqlite");
+
+        // Only the selected type's fields are shown, which keeps the form short.
+        List<DialogInput> inputs = new ArrayList<>();
+        if (!server) {
+            inputs.add(importText(IMPORT_SQLITE_FILE_INPUT, "dialog.import-sqlite-file",
+                    blankOr(spec.sqliteFile(), "enderchests.db")));
+        } else {
+            inputs.add(importText(IMPORT_HOSTPORT_INPUT, "dialog.import-host", hostPortInitial(spec)));
+            inputs.add(importText(IMPORT_DATABASE_INPUT, "dialog.import-database",
+                    blankOr(spec.database(), "enhancedechest")));
+            inputs.add(importText(IMPORT_USERNAME_INPUT, "dialog.import-username",
+                    blankOr(spec.username(), "root")));
+            inputs.add(importText(IMPORT_PASSWORD_INPUT, "dialog.import-password", orEmpty(spec.password())));
+        }
+
+        // Buttons stack in a single full-width column (columns = 1): the type toggle on top, then Start
+        // import and Cancel. The type button's own label already flips on click (tooltip says so), so no
+        // separate "Switch" button is needed — this keeps the dialog narrow and the buttons aligned.
+        ActionButton typeButton = toggleTypeButton(
+                lang.getGui(server ? "dialog.import-type-server" : "dialog.import-type-sqlite"), server, spec);
+        ActionButton start = ActionButton.create(lang.getGui("dialog.import-run"), lang.getGui("dialog.import-run-desc"),
+                IMPORT_BUTTON_WIDTH, click((view, audience) -> {
+                    if (!(audience instanceof Player p)) return;
+                    opener.performImport(p, readForm(view, server, spec));
+                }));
+        ActionButton cancel = ActionButton.create(lang.getGui("dialog.cancel"), null, IMPORT_BUTTON_WIDTH,
+                click((view, audience) -> { /* dismiss only */ }));
+
+        return Dialog.create(builder -> builder.empty()
+                .base(DialogBase.builder(lang.getGui("dialog.import-title"))
+                        .body(List.of(DialogBody.plainMessage(lang.getGui("dialog.import-body"), IMPORT_INPUT_WIDTH)))
+                        .inputs(inputs)
+                        .build())
+                .type(DialogType.multiAction(List.of(typeButton, start, cancel), null, 1)));
+    }
+
+    /** Default import spec: SQLite selected, with the same starter values as {@code config.yml}. */
+    private static SourceSpec defaultImportSpec() {
+        return new SourceSpec("sqlite", "enderchests.db", "localhost", 0, "enhancedechest", "root", "");
+    }
+
+    /**
+     * A source-type toggle button (the top button in the column): flips between SQLite and Server,
+     * preserving whatever has been typed, and re-pushes the form so only that type's fields show. Its
+     * label shows the current type and clicking it toggles (the tooltip says so).
+     * Entering server mode defaults to MySQL; the concrete engine is resolved from the port on submit
+     * (see {@link #readForm}). {@code label} is the button's text; the explanation is in its tooltip.
+     */
+    private ActionButton toggleTypeButton(Component label, boolean server, SourceSpec spec) {
+        Component tooltip = lang.getGui("dialog.import-type-desc");
+        return ActionButton.create(label, tooltip, IMPORT_BUTTON_WIDTH,
+                click((view, audience) -> {
+                    if (!(audience instanceof Player p)) return;
+                    // Preserve what has been typed for the current type, then flip and re-show.
+                    SourceSpec current = readForm(view, server, spec);
+                    String nextType = server ? "sqlite" : "mysql";
+                    SourceSpec switched = new SourceSpec(nextType, current.sqliteFile(), current.host(),
+                            current.port(), current.database(), current.username(), current.password());
+                    opener.runForPlayer(p, () -> {
+                        if (p.isOnline()) p.showDialog(importDialog(switched));
+                    });
+                }));
+    }
+
+    /** Builds one import-form text input (label from gui.yml) with the given initial value. */
+    private DialogInput importText(String key, String labelKey, String initial) {
+        return DialogInput.text(key, lang.getGui(labelKey))
+                .width(IMPORT_INPUT_WIDTH)
+                .initial(initial)
+                .maxLength(IMPORT_FIELD_MAX_LENGTH)
+                .build();
+    }
+
+    /**
+     * Reads the currently shown fields into a {@link SourceSpec}, falling back to {@code prev} for any
+     * field not on screen (so flipping the type never loses the other type's values). In server mode the
+     * single {@code host[:port]} field is split and the concrete engine is picked from the port: 5432 →
+     * PostgreSQL, otherwise MySQL/MariaDB (an omitted port defaults to 3306; a non-numeric one becomes -1,
+     * rejected on submit).
+     */
+    private SourceSpec readForm(io.papermc.paper.dialog.DialogResponseView view, boolean server, SourceSpec prev) {
+        if (!server) {
+            String file = orDefault(view.getText(IMPORT_SQLITE_FILE_INPUT), prev.sqliteFile()).trim();
+            return new SourceSpec("sqlite", file, prev.host(), prev.port(), prev.database(),
+                    prev.username(), prev.password());
+        }
+        String hostport = orDefault(view.getText(IMPORT_HOSTPORT_INPUT), hostPortInitial(prev)).trim();
+        String host;
+        int port;
+        int sep = hostport.lastIndexOf(':');
+        if (sep >= 0) {
+            host = hostport.substring(0, sep).trim();
+            String portStr = hostport.substring(sep + 1).trim();
+            port = portStr.isEmpty() ? 0 : parsePort(portStr);
+        } else {
+            host = hostport;
+            port = 0;
+        }
+        // The three server engines share this form; pick the concrete driver from the port. Only 5432 maps
+        // to PostgreSQL; everything else (incl. an omitted port → 3306) uses the MySQL/MariaDB driver.
+        String type = port == 5432 ? "postgres" : "mysql";
+        if (port == 0) port = 3306;
+        String database = orDefault(view.getText(IMPORT_DATABASE_INPUT), prev.database()).trim();
+        String username = orDefault(view.getText(IMPORT_USERNAME_INPUT), prev.username()).trim();
+        String password = orDefault(view.getText(IMPORT_PASSWORD_INPUT), prev.password());
+        return new SourceSpec(type, prev.sqliteFile(), host, port, database, username, password);
+    }
+
+    /** Renders {@code host}/{@code port} back into the combined "host[:port]" field's initial value. */
+    private static String hostPortInitial(SourceSpec spec) {
+        String host = orEmpty(spec.host());
+        return spec.port() > 0 ? host + ":" + spec.port() : host;
+    }
+
+    /** Normalises the selected type to one of {@link #IMPORT_TYPE_IDS}; unknown/blank falls back to sqlite. */
+    private static String normalizeTypeId(@Nullable String type) {
+        String t = type == null ? "" : type.trim().toLowerCase(java.util.Locale.ROOT);
+        if (t.equals("postgresql")) t = "postgres";
+        for (String id : IMPORT_TYPE_IDS) {
+            if (id.equals(t)) return id;
+        }
+        return "sqlite";
+    }
+
+    private static int parsePort(@Nullable String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return -1; // signals an invalid port to performImport's validation
+        }
+    }
+
+    /** Non-null with a fallback (used for inputs absent from the current type's form when switching). */
+    private static String orDefault(@Nullable String value, @Nullable String fallback) {
+        return value != null ? value : orEmpty(fallback);
+    }
+
+    /** Returns {@code value}, or {@code fallback} when it is null/blank (for a field's initial value). */
+    private static String blankOr(@Nullable String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static String orEmpty(@Nullable String s) {
+        return s == null ? "" : s;
     }
 
     /**

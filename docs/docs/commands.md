@@ -64,6 +64,12 @@ Reloads config and language files without restarting.
 
 </CommandRow>
 
+<CommandRow commands="/ee import" permission="enhancedechest.admin.import">
+
+Opens a form to copy all data from an old database backend into the active one (for example SQLite → MySQL). The active database must be empty and no other players may be online. See [Switching Backends](/docs/database#switching-backends) for the full walkthrough.
+
+</CommandRow>
+
 <CommandRow :commands="['/ee migrate vanilla &lt;player&gt;', '/ee migrate vanilla all']" permission="enhancedechest.admin.migrate">
 
 Imports vanilla ender chest contents into the plugin. Each player is migrated only once. Requires the player to be online.

@@ -179,6 +179,24 @@ public abstract class AbstractSqlStorage implements EnderChestStorage {
     private static final String SQL_NAME_LOAD_ALL =
             "SELECT player_uuid, username FROM players WHERE username IS NOT NULL";
 
+    // ---- database-to-database import (/ee import) ----
+
+    private static final String SQL_COUNT_CHESTS = "SELECT COUNT(*) FROM enderchests";
+
+    // Verbatim full-row inserts for the import copy: every column is written from the source row as-is
+    // (no defaults relied on), so the destination is a byte-for-byte copy. Reused as one batched
+    // PreparedStatement per table under a single transaction.
+    private static final String SQL_IMPORT_PLAYER =
+            "INSERT INTO players (player_uuid, username, edit_mode, applied_default_size) VALUES (?, ?, ?, ?)";
+
+    private static final String SQL_IMPORT_CHEST =
+            "INSERT INTO enderchests " +
+            "(player_uuid, chest_index, size, custom_name, is_primary, container_data, migrated, last_updated, kind, expires_at, icon) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    /** Rows per JDBC batch flush during import, to bound memory while still collapsing round-trips. */
+    private static final int IMPORT_BATCH_SIZE = 1000;
+
     protected final HikariDataSource dataSource;
 
     // Dialect-specific schema-creation statements injected by subclasses to avoid calling abstract
@@ -910,6 +928,85 @@ public abstract class AbstractSqlStorage implements EnderChestStorage {
         } catch (SQLException e) {
             throw new RuntimeException("Failed to load player name index", e);
         }
+    }
+
+    @Override
+    public long countChests() {
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SQL_COUNT_CHESTS);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getLong(1) : 0L;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to count chests", e);
+        }
+    }
+
+    @Override
+    public int[] importRows(List<RawPlayerRow> players, List<RawChestRow> chests) {
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                int playerCount = batchPlayers(conn, players);
+                int chestCount = batchChests(conn, chests);
+                conn.commit();
+                return new int[]{playerCount, chestCount};
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to import rows into the active database", e);
+        }
+    }
+
+    private int batchPlayers(Connection conn, List<RawPlayerRow> players) throws SQLException {
+        int pending = 0, total = 0;
+        try (PreparedStatement ps = conn.prepareStatement(SQL_IMPORT_PLAYER)) {
+            for (RawPlayerRow p : players) {
+                ps.setString(1, p.playerUuid());
+                if (p.username() == null) ps.setNull(2, Types.VARCHAR); else ps.setString(2, p.username());
+                ps.setInt(3, p.editMode());
+                ps.setInt(4, p.appliedDefaultSize());
+                ps.addBatch();
+                total++;
+                if (++pending >= IMPORT_BATCH_SIZE) {
+                    ps.executeBatch();
+                    pending = 0;
+                }
+            }
+            if (pending > 0) ps.executeBatch();
+        }
+        return total;
+    }
+
+    private int batchChests(Connection conn, List<RawChestRow> chests) throws SQLException {
+        int pending = 0, total = 0;
+        try (PreparedStatement ps = conn.prepareStatement(SQL_IMPORT_CHEST)) {
+            for (RawChestRow c : chests) {
+                ps.setString(1, c.playerUuid());
+                ps.setInt(2, c.chestIndex());
+                ps.setInt(3, c.size());
+                if (c.customName() == null) ps.setNull(4, Types.VARCHAR); else ps.setString(4, c.customName());
+                ps.setInt(5, c.isPrimary());
+                // setBytes(null) binds SQL NULL cleanly across all three dialects (see insertFullChest).
+                ps.setBytes(6, c.containerData());
+                ps.setInt(7, c.migrated());
+                ps.setLong(8, c.lastUpdated());
+                ps.setInt(9, c.kind());
+                setNullableLong(ps, 10, c.expiresAt());
+                if (c.icon() == null) ps.setNull(11, Types.VARCHAR); else ps.setString(11, c.icon());
+                ps.addBatch();
+                total++;
+                if (++pending >= IMPORT_BATCH_SIZE) {
+                    ps.executeBatch();
+                    pending = 0;
+                }
+            }
+            if (pending > 0) ps.executeBatch();
+        }
+        return total;
     }
 
     // ---- shared helpers (operate on a caller-managed connection) ----

@@ -33,10 +33,6 @@ A Paper plugin that replaces the vanilla ender chest with a larger, multi-chest,
 
 The output jar is placed in `build/libs/` and copied to `TestServer/plugins/` automatically via the `shadowJar` task. Adjust the destination path in `build.gradle.kts` if your test server is located elsewhere.
 
-## Documentation
-
-Full configuration reference, command list, permission nodes, and database setup are available at [openvdra.github.io/EnhancedEchest](https://openvdra.github.io/EnhancedEchest/).
-
 ## Statistics
 
 EnhancedEchest reports anonymous usage data to [bStats](https://bstats.org/plugin/bukkit/EnhancedEchest/32142). Collection is anonymous and can be turned off globally in `plugins/bStats/config.yml`.

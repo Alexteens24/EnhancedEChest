@@ -39,6 +39,8 @@ Mỗi lệnh `/ee` chỉ cần đúng node riêng của lệnh đó. Không còn
 
 **`enhancedechest.admin.migrate`** - `/ee migrate vanilla`, `/ee migrate axvaults` và `/ee migrate playervaultsx`: nhập dữ liệu từ rương Ender vanilla, plugin AxVaults hoặc plugin PlayerVaultsX.
 
+**`enhancedechest.admin.import`** - `/ee import`: sao chép toàn bộ dữ liệu từ một backend cơ sở dữ liệu cũ vào backend đang dùng.
+
 ::: tip
 Để cấp toàn quyền quản trị một lần, cấp `enhancedechest.admin.*` (nếu plugin quyền của bạn hỗ trợ wildcard).
 :::

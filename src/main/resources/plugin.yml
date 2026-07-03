@@ -19,7 +19,7 @@ commands:
   enhancedechest:
     description: EnhancedEchest admin commands
     aliases: [ ee ]
-    usage: /enhancedechest <migrate vanilla|axvaults> | reload | add | resize | delete | view | transfer
+    usage: /enhancedechest <migrate vanilla|axvaults> | reload | import | add | resize | delete | view | transfer
 
 permissions:
   enhancedechest.command.open:
@@ -31,6 +31,9 @@ permissions:
     default: op
   enhancedechest.admin.migrate:
     description: Use /ee migrate vanilla and /ee migrate axvaults
+    default: op
+  enhancedechest.admin.import:
+    description: Use /ee import (copy an old database backend into the active one)
     default: op
   enhancedechest.admin.add:
     description: Use /ee add

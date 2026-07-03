@@ -50,6 +50,37 @@ public interface EnderChestStorage {
     /** Returns the player's chests ordered by index. Empty list if the player owns none. */
     List<ChestSummary> listChests(UUID owner);
 
+    // ---- database-to-database import (/ee import) ----
+
+    /**
+     * Total number of rows in the {@code enderchests} table across every player and chest kind. Used by
+     * {@code /ee import} to refuse converting into a non-empty destination (import only into a fresh DB).
+     */
+    long countChests();
+
+    /**
+     * Bulk-inserts raw {@code players} and {@code enderchests} rows <b>verbatim</b> into this (fresh,
+     * active) backend, in a single transaction. Every column is copied as-is — including the
+     * {@code container_data} bytes — so no item (de)serialization happens; this is the DB→DB conversion
+     * primitive behind {@code /ee import}.
+     *
+     * <p>Inserts are batched per table (one reused {@link java.sql.PreparedStatement} each, flushed in
+     * chunks) with autocommit off, so the whole copy commits once. A duplicate primary key (or any other
+     * failure) rolls the whole transaction back and throws — the caller guards that the destination is
+     * empty first, so a duplicate signals a real problem rather than silently merging.
+     *
+     * @return {@code [playersInserted, chestsInserted]}
+     */
+    int[] importRows(List<RawPlayerRow> players, List<RawChestRow> chests);
+
+    /** One {@code players} row read verbatim from a source database for {@link #importRows}. */
+    record RawPlayerRow(String playerUuid, @Nullable String username, int editMode, int appliedDefaultSize) {}
+
+    /** One {@code enderchests} row read verbatim from a source database for {@link #importRows}. */
+    record RawChestRow(String playerUuid, int chestIndex, int size, @Nullable String customName,
+                       int isPrimary, @Nullable byte[] containerData, int migrated, long lastUpdated,
+                       int kind, @Nullable Long expiresAt, @Nullable String icon) {}
+
     /**
      * Returns the index of the chest /ec opens: the primary if one is flagged, otherwise the
      * lowest-indexed chest. Returns -1 if the player owns no chests.

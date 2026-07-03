@@ -2,6 +2,19 @@
 
 All notable changes to EnhancedEchest are recorded here, newest first.
 
+## 1.0.6 - 2026-07-03
+
+This release adds a built-in tool to move all your data from one database backend to another, with no external tools or manual SQL.
+
+### Added
+
+- Added `/ee import` to copy every player's chests from an old database backend into the one your server is currently using — for example when moving from SQLite to MySQL, or between MySQL and PostgreSQL.
+  - Point `config.yml` at the new (empty) backend, restart, then run `/ee import` and fill in the old database's connection details in the dialog.
+  - The copy is byte-for-byte, so item contents, sizes, names, icons, and settings all carry over exactly, and it stays fast even for large databases.
+  - Safety checks before it runs: no other players may be online, the source cannot be the database you are already on, and the destination must be empty.
+  - Everything is copied in a single transaction, so a failure part-way leaves the destination untouched — just fix the problem and run it again.
+  - Gated by the new `enhancedechest.admin.import` permission.
+
 ## 1.0.5 - 2026-07-03
 
 ### Fixed

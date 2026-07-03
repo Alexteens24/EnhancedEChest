@@ -37,6 +37,22 @@ migrate:
   import-player-done: '{prefix}&f{source} import for {player}: {vaults} vault(s) imported, {skipped} skipped.'
   import-failed: '{prefix}&f{source} import failed: {error}'
 
+# Database-to-database import (/ee import) — copies an old backend into the active one.
+import:
+  # Validation of the dialog form before anything runs.
+  missing-sqlite-file: '{prefix}&fEnter the SQLite database file to import from.'
+  missing-remote-fields: '{prefix}&fEnter the host, database and username of the source database.'
+  invalid-port: '{prefix}&fThe source database port is not valid.'
+  invalid-type: '{prefix}&fChoose a source database type.'
+  # Pre-flight guards.
+  players-online: '{prefix}&fImport can only run when no other players are online. Ask everyone else to leave and try again.'
+  same-database: '{prefix}&fThe source is the same database the plugin is already using. Point it at the OLD backend instead.'
+  dest-not-empty: '{prefix}&fThe active database already has {count} chest(s). Import only works into a fresh, empty database.'
+  # Progress + outcome. {source} = chosen type; {players}/{chests} = rows copied.
+  started: '{prefix}&fImporting from the {source} database… this runs in the background.'
+  done: '{prefix}&fImport complete. Copied {players} player(s) and {chests} chest(s) into the active database.'
+  failed: '{prefix}&fImport failed and nothing was written. Reason: {error}'
+
 admin:
   reload-success: '{prefix}&fConfiguration reloaded.'
   player-not-found: '{prefix}&fPlayer {player} was not found.'
