@@ -20,6 +20,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 public final class LanguageManager {
 
@@ -49,6 +50,10 @@ public final class LanguageManager {
 
     private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
+    private static final Pattern MINI_TAG_PATTERN = Pattern.compile(
+            "<(?i:click\\b|hover\\b|newline\\b|br\\b|reset\\b|r\\b|gray\\b|white\\b|red\\b|green\\b|blue\\b|yellow\\b|gold\\b|aqua\\b|purple\\b|black\\b|dark_[a-z_]+\\b|light_[a-z_]+\\b|bold\\b|b\\b|italic\\b|i\\b|underlined\\b|u\\b|strikethrough\\b|st\\b|obfuscated\\b|obf\\b|transition\\b|gradient\\b|rainbow\\b|color\\b|colour\\b|font\\b|#[a-fA-F0-9]{6}\\b|#[a-fA-F0-9]{3}\\b|/(?:click\\b|hover\\b|color\\b|colour\\b|bold\\b|b\\b|italic\\b|i\\b|underlined\\b|u\\b|strikethrough\\b|st\\b|obfuscated\\b|obf\\b|font\\b))"
+    );
+
     private final JavaPlugin plugin;
     private final PluginConfig config;
     private String locale;
@@ -57,6 +62,7 @@ public final class LanguageManager {
 
     // Hot-path values resolved once per (re)load instead of on every message/open.
     private String cachedPrefix;
+    private String cachedPrefixMini;
     private String cachedTitleBase;
     private String cachedTitleTemplate;
     private String cachedTitleTemp;
@@ -99,6 +105,12 @@ public final class LanguageManager {
         gui      = loadFile(base + "gui.yml");
 
         cachedPrefix        = messages.getString("prefix", "[EnhancedEchest] ");
+        if (isMiniMessage(cachedPrefix)) {
+            cachedPrefixMini = cachedPrefix;
+            cachedPrefix     = LEGACY.serialize(MINI.deserialize(cachedPrefix));
+        } else {
+            cachedPrefixMini = MINI.serialize(LEGACY.deserialize(cachedPrefix));
+        }
         cachedTitleBase     = gui.getString("enderchest.title", "Ender Chest");
         cachedTitleTemplate = gui.getString("enderchest.title-numbered", "Ender Chest {index}");
         cachedTitleTemp     = gui.getString("enderchest.title-temp", "Temporary Storage");
@@ -151,14 +163,21 @@ public final class LanguageManager {
      */
     public Component get(String key, String... replacements) {
         if (replacements.length == 0) {
-            return messageCache.computeIfAbsent(key, k -> parse(messages.getString(k, k).replace("{prefix}", cachedPrefix)));
+            return messageCache.computeIfAbsent(key, k -> {
+                String raw = messages.getString(k, k);
+                boolean isMini = isMiniMessage(raw);
+                String prefix = isMini ? cachedPrefixMini : cachedPrefix;
+                return parse(raw.replace("{prefix}", prefix), isMini);
+            });
         }
         String raw = messages.getString(key, key);
-        raw = raw.replace("{prefix}", cachedPrefix);
+        boolean isMini = isMiniMessage(raw);
+        String prefix = isMini ? cachedPrefixMini : cachedPrefix;
+        raw = raw.replace("{prefix}", prefix);
         for (int i = 0; i + 1 < replacements.length; i += 2) {
             raw = raw.replace("{" + replacements[i] + "}", replacements[i + 1]);
         }
-        return parse(raw);
+        return parse(raw, isMini);
     }
 
     /**
@@ -188,7 +207,7 @@ public final class LanguageManager {
             return Component.text(name);
         }
         try {
-            return name.contains("<") ? NAME_MINI.deserialize(name) : LEGACY.deserialize(name);
+            return isMiniMessage(name) ? NAME_MINI.deserialize(name) : LEGACY.deserialize(name);
         } catch (RuntimeException e) {
             return Component.text(name);
         }
@@ -236,9 +255,20 @@ public final class LanguageManager {
     }
 
     private Component parse(String text) {
-        if (text.contains("<")) {
+        return parse(text, isMiniMessage(text));
+    }
+
+    private Component parse(String text, boolean isMini) {
+        if (isMini) {
             return MINI.deserialize(text);
         }
         return LEGACY.deserialize(text);
+    }
+
+    private static boolean isMiniMessage(String text) {
+        if (text == null) {
+            return false;
+        }
+        return MINI_TAG_PATTERN.matcher(text).find();
     }
 }
