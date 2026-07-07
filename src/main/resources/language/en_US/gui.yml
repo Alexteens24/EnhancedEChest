@@ -50,7 +50,7 @@ dialog:
   rename-desc: '<white>Give this chest a custom display name.'
   choose-icon: '<white>Choose icon'
   choose-icon-desc: '<white>Pick an item to show as this chest''s icon in the list.'
-  # Sort button — only shown when enderchest.features.sort is enabled in config.yml.
+  # Sort button; only shown when enderchest.features.sort is enabled in config.yml.
   sort: '<white>Sort'
   sort-desc: '<white>Merge identical items into full stacks and reorder this chest by item type.'
   # Returns to the previous dialog; reused by the icon picker.
@@ -65,13 +65,13 @@ dialog:
   # ===== Icon picker dialog =====
   icon-title: '<white>Choose Icon'
   # {count} = number of matching items (scroll the list to browse).
-  icon-body: '<white>{count} items — type a name and press Search to filter. Scroll to browse.'
+  icon-body: '<white>{count} items. Type a name and press Search to filter; scroll to browse.'
   icon-search-label: '<white>Search'
   icon-search: '<white>Search'
   icon-default: '<white>Default'
   icon-default-desc: '<white>Show this chest with no icon.'
 
-  # ===== Import dialog (/ee import — copy an old database backend into the active one) =====
+  # ===== Import dialog (/ee import: copy an old database backend into the active one) =====
   import-title: '<white>Import from another database'
   import-body: '<gray>Move data from your old database to the one set in config. The new database must be <white>empty</white> before you start.'
   # Field labels.
@@ -85,7 +85,7 @@ dialog:
   import-run-desc: '<white>Copy every chest from the source database into the active one.'
   # Source-type toggle (top button of the column, above Start import + Cancel). Its label shows the
   # current type and clicking it flips the type; the detail is in the tooltip below. Two types only:
-  # SQLite (a file) or Server (MySQL / MariaDB / PostgreSQL — they share the same form).
+  # SQLite (a file) or Server (MySQL / MariaDB / PostgreSQL; they share the same form).
   import-type-sqlite: '<white>Type: <yellow>SQLite'
   import-type-server: '<white>Type: <yellow>Server'
-  import-type-desc: '<white>Source database type — click to switch.<newline><gray>SQLite reads a file; Server reads a MySQL, MariaDB or PostgreSQL host (use port 5432 for PostgreSQL).'
+  import-type-desc: '<white>Source database type. Click to switch.<newline><gray>SQLite reads a file; Server reads a MySQL, MariaDB or PostgreSQL host (use port 5432 for PostgreSQL).'

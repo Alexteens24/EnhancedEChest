@@ -16,7 +16,9 @@ being lost silently.
 ## Sweeper (`expiry/ExpirySweeper`)
 
 A FoliaLib async repeating timer at `temp-enderchest.check-interval` (default `5m`). Each tick runs
-`findExpired(now)` (one indexed query on a column that is `NULL` for almost every row) and routes each
+`findExpired(now)` — a DB-side candidate query (the only way to see offline, non-resident owners'
+expired chests) whose hits are loaded into the cache and re-verified against the authoritative
+in-memory rows, plus the scan of already-resident owners — and routes each
 hit through the service — NORMAL → `removeChest(..., force=false)` (spill), TEMP →
 `removeChest(..., force=true)` (discard). PERM chests carry no `expires_at`, so they never appear in
 `findExpired` and are never swept (they are managed by the permission reconcile instead). Expiry is
@@ -35,15 +37,15 @@ expiry — goes through `ChestSpillService` (which delegates the force-close + e
    the shared inventory and registers the save in `pendingSaves` before the op proceeds.
 2. `runExclusive(owner, index, dbWork)` chains the work behind that pending save (and any other op for
    the key) and registers its own marker, so a concurrent `open` waits for it.
-3. The actual row changes happen in **one transaction**:
-   - `spillShrink`: UPDATE original to the new size/contents + INSERT temp holding the overflow.
-   - `spillRemove`: INSERT temp + DELETE original (**no** primary promotion — the main is an explicit
-     player choice).
-   The temp index is `MAX(chest_index)+1` computed inside that same transaction, so items never exist in
+3. The actual row changes happen atomically under the `CachedStorage` lock:
+   - `spillShrink`: update the original to the new size/contents + insert a temp row holding the overflow.
+   - `spillRemove`: insert the temp row + remove the original (**no** primary promotion — the main is an
+     explicit player choice).
+   The temp index is `max(chest_index)+1` computed under that same lock, so items never exist in
    two rows visible to any outside reader.
 
 The spill ops themselves run entirely on the DB executor inside `runExclusive` — decode, split,
-re-encode and the transaction. The session save-side encode that precedes them (step 1's `forceCloseAll`
+re-encode and the store mutation. The session save-side encode that precedes them (step 1's `forceCloseAll`
 persist) stays synchronous on the global thread, per the dupe-safety contract
 ([concurrency-and-dupe-safety.md](concurrency-and-dupe-safety.md)).
 

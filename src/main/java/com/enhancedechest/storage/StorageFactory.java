@@ -11,7 +11,7 @@ public final class StorageFactory {
 
     private StorageFactory() {}
 
-    public static EnderChestStorage create(PluginConfig config, Path dataFolder) {
+    public static StorageBackend create(PluginConfig config, Path dataFolder) {
         return switch (config.getDatabaseType().toLowerCase()) {
             case "sqlite"                -> new SqliteStorage(dataFolder, config.getSqliteFile());
             case "mysql", "mariadb"      -> new MysqlStorage(config);

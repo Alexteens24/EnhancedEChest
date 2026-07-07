@@ -14,8 +14,10 @@ import java.util.concurrent.TimeUnit;
  * Periodically scans for expired chests and disposes of them.
  *
  * <p>Runs on a FoliaLib async repeating timer at the configured {@code check-interval}. Each sweep
- * queries the (indexed) {@code expires_at} column — cheap, since it is NULL for almost every row —
- * and routes each hit through {@link ChestSpillService}:
+ * calls {@code findExpired} — a DB-side candidate query (the only way to see offline, non-resident
+ * owners' expired chests) whose hits are loaded into the cache and re-verified against the
+ * authoritative in-memory rows, plus a scan of already-resident owners — and routes each hit through
+ * {@link ChestSpillService}:
  * <ul>
  *   <li>a NORMAL chest is removed with its items spilled into a temp chest ({@code force = false});</li>
  *   <li>a TEMP chest is hard-deleted, its remaining items lost ({@code force = true}).</li>

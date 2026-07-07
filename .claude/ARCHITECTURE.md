@@ -23,10 +23,19 @@ its own size (9–54, multiple of 9), optional custom name, optional icon, and a
 decides which one `/ec` and the ender chest block open.
 
 The guiding invariant is **no item duplication**. A chest's contents exist in exactly one place at a
-time: in memory it is backed by a single shared `Inventory` (so concurrent viewers — e.g. an owner and an
-admin via `/ee view` — never dupe), and it is loaded fresh from the DB on first open and written back on
-last close. **Do not regress this** — see
+time: while open it is backed by a single shared `Inventory` (so concurrent viewers — e.g. an owner and
+an admin via `/ee view` — never dupe), and it is loaded fresh from the store on first open and written
+back on last close. **Do not regress this** — see
 [architecture/concurrency-and-dupe-safety.md](architecture/concurrency-and-dupe-safety.md).
+
+Storage is a **lazy-load + write-back cache**: `CachedStorage` reads a player's rows from SQL once on
+first touch (join prefetch, or on demand inside any storage call that misses — admin commands on
+offline players, expiry sweeps) and is authoritative for every owner it holds resident;
+`AutosaveService` flushes dirty rows to SQL on `database.autosave-interval` (default 5m) and then
+evicts flushed offline owners, each quitter is written back + evicted a few seconds after quit, and
+`CachedStorage.close()` flushes everything at shutdown. Memory stays proportional to online players.
+Cross-server sharing (multiple servers on one database) is still **not supported**. See
+[architecture/storage-and-schema.md](architecture/storage-and-schema.md).
 
 ## Module map
 
@@ -55,12 +64,17 @@ com.enhancedechest
 │   ├── VanillaEnderChestListener    right-click → open custom GUI
 │   ├── EnderChestGuiListener        click/drag guards (read-only, temp take-only); on close → detach
 │   ├── PlayerQuitListener           on quit → detach (backstop)
-│   ├── PlayerSettingsListener       preload/evict the settings cache on join/quit
+│   ├── PlayerSettingsListener       join/quit lifecycle: pin + preload caches, unpin + quit write-back
 │   └── JoinMigrationListener        auto-migrate on join when enabled
 ├── storage/
 │   ├── EnderChestStorage     interface (synchronous, single-row-per-chest ownership model)
-│   ├── StorageFactory        picks backend from config.type
-│   └── sql/                  AbstractSqlStorage + Sqlite / Mysql / Postgres subclasses
+│   ├── CachedStorage         EnderChestStorage façade: ender-chest domain logic over the two helpers below
+│   ├── OwnerResidencyCache   coherence engine: the lock, load-on-miss residency (withOwner), flush, evict
+│   ├── ChestCacheState       pure in-memory row model + dirty tracking (locked by OwnerResidencyCache)
+│   ├── StorageBackend        narrow SQL contract: init/close, backup, import, per-player reads, flush
+│   ├── AutosaveService       periodic async flush + idle eviction, per-player write-back after quit
+│   ├── StorageFactory        picks the SQL backend from config.type (wrapped by CachedStorage)
+│   └── sql/                  AbstractSqlStorage (reads + batched flush, no per-row write DML) + Sqlite / Mysql / Postgres
 ├── serialization/ContainerCodec     ItemStack[] ⇄ byte[] (parametric on size)
 ├── expiry/ExpirySweeper             async sweep of expired chests
 ├── migration/MigrationService       vanilla EC → chest #1 import (atomic, single-location)
@@ -74,12 +88,14 @@ com.enhancedechest
 
 1. **Bootstrap** (`EnhancedEchestBootstrap`): runs before enable; registers the `/ec` and
    `/enhancedechest` command trees against the Brigadier `Commands` registrar, gated by `.requires(...)`.
-2. **Enable** (`EnhancedEchestPlugin#onEnable`): loads config + language, builds the storage backend
-   (`StorageFactory.create`) and calls `init()` (creates schema), builds the `ContainerCodec` and the
-   `service` layer (`DbExecutor` → `StorageGateway`/`PlayerSettingsCache` → `ChestSessionManager` →
-   `ChestSpillService` → `PermissionChestService` → `ChestOpener`), registers listeners, preloads online
-   players' settings, kicks
+2. **Enable** (`EnhancedEchestPlugin#onEnable`): loads config + language, builds the SQL backend
+   (`StorageFactory.create`) wrapped in `CachedStorage` and calls `init()` (creates schema + runs
+   migrations; player data is loaded lazily per owner, not bulk-loaded), builds the `ContainerCodec`
+   and the `service` layer (`DbExecutor` → `StorageGateway`/`PlayerSettingsCache` →
+   `ChestSessionManager` → `ChestSpillService` → `PermissionChestService` → `ChestOpener`), starts the
+   `AutosaveService` timer, registers listeners, pins + preloads online players, kicks
    off the async update check, and prints a startup banner noting the detected platform (Folia / Paper).
 3. **Disable** (`onDisable`): `ChestSessionManager.shutdown()` persists every still-open session and
-   flushes all pending DB saves (blocking up to 30s), then `PlayerSettingsCache.clear()` and
-   `DbExecutor.shutdown()` close the pool — all **before** `storage.close()`.
+   flushes all pending store saves (blocking up to 30s), then `PlayerSettingsCache.clear()` and
+   `DbExecutor.shutdown()` close the pool — all **before** `storage.close()`, which performs the final
+   full flush of the in-memory data to SQL and closes the connection pool.

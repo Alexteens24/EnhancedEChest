@@ -115,18 +115,46 @@ final class SchemaMigrator {
         try (Connection conn = dataSource.getConnection()) {
             ensureMetaTable(conn);
             int from = readVersion(conn);
-            if (from >= CURRENT_VERSION) {
-                return; // already current — the common path on every restart after the first.
-            }
-            for (Step step : STEPS) {
-                if (step.version() > from) {
-                    step.apply(conn);
-                    writeVersion(conn, step.version());
-                    log.info("Applied database schema migration to v{}.", step.version());
+            if (from < CURRENT_VERSION) {                  // skip the version loop on the common restart path
+                for (Step step : STEPS) {
+                    if (step.version() > from) {
+                        step.apply(conn);
+                        writeVersion(conn, step.version());
+                        log.info("Applied database schema migration to v{}.", step.version());
+                    }
                 }
             }
+            ensureIndexes(conn);                           // best-effort, every start, idempotent
         } catch (SQLException e) {
             throw new RuntimeException("Failed to migrate database schema", e);
+        }
+    }
+
+    /**
+     * Best-effort creation of the supporting indexes, run on every start (not version-gated) so installs
+     * that predate an index still gain it. Currently just the expiry-sweep index: {@code findExpired}
+     * runs every sweep with a range predicate on {@code expires_at}, and without an index that is a full
+     * table scan — on SQLite the container blobs are stored inline, so the scan reads most of the DB file
+     * every few minutes on a large roster. A missing index only costs sweep performance, never
+     * correctness, so any failure here is logged and swallowed rather than aborting startup.
+     *
+     * <p>Portability: {@code CREATE INDEX IF NOT EXISTS} is accepted by SQLite, MariaDB and PostgreSQL;
+     * stock MySQL rejects the {@code IF NOT EXISTS}, so on that first failure we retry with a plain
+     * {@code CREATE INDEX} and tolerate the duplicate-index error a subsequent start then raises.
+     */
+    private static void ensureIndexes(Connection conn) {
+        // Reuse the historical index name so installs that already carry it are a no-op (IF NOT EXISTS)
+        // rather than gaining a second, redundant index on the same column.
+        String ddl = "CREATE INDEX %sidx_enderchests_expires ON enderchests (expires_at)";
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(String.format(ddl, "IF NOT EXISTS "));
+        } catch (SQLException ifNotExistsUnsupported) {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute(String.format(ddl, ""));      // stock MySQL: no IF NOT EXISTS
+            } catch (SQLException probablyAlreadyExists) {
+                log.debug("Expiry index not created (likely already present): {}",
+                        probablyAlreadyExists.getMessage());
+            }
         }
     }
 

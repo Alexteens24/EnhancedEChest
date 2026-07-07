@@ -13,7 +13,9 @@ import org.jetbrains.annotations.Nullable;
  *       (SqliteStorage / MysqlStorage / PostgresStorage) — for an existing install, ship a guarded
  *       {@code ALTER TABLE ... ADD COLUMN ... DEFAULT ...} step in {@code SchemaMigrator} (portable
  *       across all four engines);</li>
- *   <li>map the column in {@code AbstractSqlStorage.loadSettings}/{@code saveSettings}.</li>
+ *   <li>add the field to {@code EnderChestStorage.RawPlayerRow} and map it in
+ *       {@code AbstractSqlStorage.loadAllPlayers}/{@code batchPlayers} (bulk load/flush) plus the
+ *       in-memory {@code PlayerRow} + settings methods in {@code CachedStorage}.</li>
  * </ol>
  * Defaults live in {@link #defaults()} so a player with no row behaves identically to a fresh one.
  *

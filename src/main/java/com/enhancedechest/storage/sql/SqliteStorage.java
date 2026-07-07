@@ -89,8 +89,8 @@ public final class SqliteStorage extends AbstractSqlStorage {
         config.setPoolName("EnhancedEchest-SQLite");
         // Generous: the backup's VACUUM INTO holds the single connection for the whole snapshot, and
         // on a big database that can exceed several seconds. Waiters should ride it out and then
-        // succeed — with a short timeout an open/save landing mid-backup fails instead, which for a
-        // save means an unwritten chest. 30s comfortably covers a large vacuum without masking a hang.
+        // succeed — with a short timeout an autosave flush landing mid-backup fails instead, leaving
+        // its rows dirty for a retry. 30s comfortably covers a large vacuum without masking a hang.
         config.setConnectionTimeout(30_000);
         config.setIdleTimeout(0);
         config.setMaxLifetime(0);

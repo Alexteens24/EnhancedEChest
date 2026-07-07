@@ -49,7 +49,7 @@ permission-chests:
   # Matching permissions STACK (summed per size). Losing a permission removes exactly that many
   # chests of that size; any items they held spill into a temporary chest (recoverable in /eclist).
   # Synced every time the player opens their ender chest. Players always keep at least one regular
-  # (base) chest — permissions never create, delete or override it.
+  # (base) chest; permissions never create, delete or override it.
   enabled: true
 
 temp-enderchest:
@@ -69,12 +69,19 @@ temp-enderchest:
     key: minecraft:entity.villager.no
 
 database:
-  # NOTE: changes to ANY setting in this 'database' section require a FULL SERVER RESTART.
-  # /ee reload will NOT apply them — the connection pool is built once at startup and is kept on the
-  # old settings, because rebuilding it live could drop connections mid-save and risk item dupes.
+  # NOTE: changes to the CONNECTION settings in this section (type/file/host/port/database/username/
+  # password/pool-size) require a FULL SERVER RESTART. /ee reload will NOT apply them: the connection
+  # pool is built once at startup and is kept on the old settings, because rebuilding it live could
+  # drop connections mid-save and risk item dupes. (autosave-interval below IS applied by /ee reload.)
   #
   # Storage backend: sqlite | mysql | mariadb | postgres
   type: sqlite
+  # Each player's ender chest data is loaded into memory when they join and kept there while they are
+  # online; opening/closing chests never queries the database. Changes are written back to the database
+  # on this interval, a few seconds after a player quits, and one final time at shutdown. Lower = less
+  # data at risk if the server ever crashes hard; higher = fewer database writes. Minimum 30s.
+  # Time format: 30s, 5m, 1h, ... (units: s m h d)
+  autosave-interval: 5m
   # SQLite: path relative to plugin data folder (default: enderchests.db)
   sqlite-file: enderchests.db
   # MySQL/MariaDB default port: 3306 | Postgres default port: 5432
@@ -90,7 +97,7 @@ backup:
   # database ever gets corrupted or something goes wrong.
   #
   # IMPORTANT: this only works with SQLite (the default storage). If you use mysql/mariadb/postgres,
-  # the plugin will NOT back up for you — use your database server's own backup tools instead.
+  # the plugin will NOT back up for you; use your database server's own backup tools instead.
   enabled: true
 
   # How often to make a backup.
@@ -112,7 +119,7 @@ backup:
 
 migration:
   # When true: un-migrated players have their vanilla enderchest imported on join.
-  # Note: changing this to true and reloading does NOT migrate players already online —
-  # migration only fires on the join event, so current players must rejoin to be migrated
+  # Note: changing this to true and reloading does NOT migrate players already online.
+  # Migration only fires on the join event, so current players must rejoin to be migrated
   # (or use "/ee migrate vanilla <player>" / "/ee migrate vanilla all" for online players).
   enabled: false

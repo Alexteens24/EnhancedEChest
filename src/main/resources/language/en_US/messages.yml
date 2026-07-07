@@ -18,7 +18,7 @@ chest:
   # Shown to an admin who tries to open a chest already in use (Folia allows only one viewer per chest).
   in-use: '{prefix}&fThat ender chest is currently in use. Please try again in a moment.'
   # Action bar shown to an admin who may view but not edit another player''s chest (no edit permission).
-  view-only: '&7Read-only — you can view this chest but not change its contents.'
+  view-only: '&7Read-only: you can view this chest but not change its contents.'
   # Shown after the Sort button finishes tidying a chest.
   sorted: '{prefix}&fChest sorted.'
   # Shown when Sort is clicked again before its cooldown elapses. {time} = remaining time, e.g. "2s".
@@ -33,14 +33,14 @@ migrate:
   success: '{prefix}&fMigrated {player} successfully.'
   already-done: '{prefix}&f{player} was already migrated.'
   failed: '{prefix}&fMigration failed for {player}. Check the console for details.'
-  # Importing from another vault plugin — {source} is the plugin name (AxVaults, PlayerVaultsX).
+  # Importing from another vault plugin; {source} is the plugin name (AxVaults, PlayerVaultsX).
   no-source: '{prefix}&fNo {source} data found to import.'
   started: '{prefix}&fImporting vaults from {source}… this runs in the background.'
   import-done: '{prefix}&f{source} import done. {players} player(s), {vaults} vault(s) imported, {skipped} skipped, {failed} failed.'
   import-player-done: '{prefix}&f{source} import for {player}: {vaults} vault(s) imported, {skipped} skipped.'
   import-failed: '{prefix}&f{source} import failed: {error}'
 
-# Database-to-database import (/ee import) — copies an old backend into the active one.
+# Database-to-database import (/ee import): copies an old backend into the active one.
 import:
   # Validation of the dialog form before anything runs.
   missing-sqlite-file: '{prefix}&fEnter the SQLite database file to import from.'
@@ -65,24 +65,24 @@ admin:
   invalid-size: '{prefix}&fSize must be a multiple of 9 between 9 and 54.'
   invalid-duration: '{prefix}&fInvalid duration "{duration}". Use a value like 20s, 5m, 1h, 7d, or 1d_2h_30m.'
   chest-not-found: '{prefix}&f{player} has no ender chest with index {index}.'
-  # /ee resize on a permission-granted chest — those are managed by permissions, not admin commands.
+  # /ee resize on a permission-granted chest: those are managed by permissions, not admin commands.
   cannot-modify-perm: '{prefix}&fEnder chest {index} of {player} is granted by a permission and cannot be modified.'
   # /ee resize on the base chest while its size is set by an enhancedechest.default_size.<size> permission.
   cannot-modify-default-size: '{prefix}&fEnder chest {index} of {player} is sized by a permission and cannot be resized.'
-  # /ee view <player> — the target owns no chests yet, so there is nothing to open.
+  # /ee view <player>: the target owns no chests yet, so there is nothing to open.
   view-no-chests: '{prefix}&f{player} does not have any ender chests yet.'
   chest-added: '{prefix}&fAdded ender chest {index} with {size} slots to {player}.'
   chest-added-expiring: '{prefix}&fAdded ender chest {index} with {size} slots to {player}. It will expire in {duration}.'
   chests-added: '{prefix}&fAdded {count} ender chests ({range}) with {size} slots to {player}.'
   chests-added-expiring: '{prefix}&fAdded {count} ender chests ({range}) with {size} slots to {player}. They will expire in {duration}.'
   chest-resized: '{prefix}&fResized ender chest {index} of {player} to {size} slots.'
-  # /ee delete <player> <count> [force] — removes the newest chests; the first chest is always kept.
+  # /ee delete <player> <count> [force]: removes the newest chests; the first chest is always kept.
   no-chests-deletable: '{prefix}&f{player} has only their first ender chest, which cannot be deleted.'
   chest-deleted-newest: '{prefix}&fDeleted the newest ender chest of {player}. Its items were discarded.'
   chest-deleted-newest-spilled: '{prefix}&fDeleted the newest ender chest of {player}. Any items it held were moved to a temporary chest.'
   chests-deleted-newest: '{prefix}&fDeleted the {count} newest ender chests of {player}. Their items were discarded.'
   chests-deleted-newest-spilled: '{prefix}&fDeleted the {count} newest ender chests of {player}. Any items they held were moved to temporary chests.'
-  # /ee transfer <from> <to> <index|name|all> [override|temp] — move chests to a switched account.
+  # /ee transfer <from> <to> <index|name|all> [override|temp]: move chests to a switched account.
   transfer-usage: '{prefix}&fUsage: /ee transfer <from> <to> <#index | name | all> [override | temp].'
   transfer-same-player: '{prefix}&fThe source and destination players must be different.'
   transfer-not-found: '{prefix}&f{player} has no ender chest matching "{target}".'

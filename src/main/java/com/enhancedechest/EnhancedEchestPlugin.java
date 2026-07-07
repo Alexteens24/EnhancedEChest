@@ -25,7 +25,9 @@ import com.enhancedechest.service.PermissionChestService;
 import com.enhancedechest.service.PlayerNameIndex;
 import com.enhancedechest.service.PlayerSettingsCache;
 import com.enhancedechest.service.StorageGateway;
-import com.enhancedechest.storage.EnderChestStorage;
+import com.enhancedechest.storage.AutosaveService;
+import com.enhancedechest.storage.CachedStorage;
+import com.enhancedechest.storage.StorageBackend;
 import com.enhancedechest.storage.StorageFactory;
 import com.enhancedechest.telemetry.FastStatsTelemetry;
 import com.enhancedechest.telemetry.Telemetry;
@@ -47,7 +49,8 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
     private PluginConfig pluginConfig;
     private LanguageManager languageManager;
     private ContainerCodec codec;
-    private EnderChestStorage storage;
+    private CachedStorage storage;
+    private AutosaveService autosaveService;
     private DbExecutor dbExecutor;
     private StorageGateway storageGateway;
     private PlayerNameIndex playerNameIndex;
@@ -77,7 +80,12 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         foliaLib        = new FoliaLib(this);
         pluginConfig    = new PluginConfig(getConfig());
         codec           = new ContainerCodec();
-        storage         = StorageFactory.create(pluginConfig, getDataFolder().toPath());
+        // The SQL backend is wrapped in the lazy write-back cache: a player's rows are read from SQL
+        // once on first touch (join prefetch / on-demand miss) and served from memory after that; the
+        // SQL side is otherwise touched only by the periodic autosave, the per-player write-back after
+        // a quit, backups/imports, and the final flush at shutdown (CachedStorage.close()).
+        StorageBackend backend = StorageFactory.create(pluginConfig, getDataFolder().toPath());
+        storage         = new CachedStorage(backend, getSLF4JLogger());
 
         try {
             storage.init();
@@ -95,9 +103,9 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
 
         // Service layer, wired bottom-up: the shared async pool, then the storage/settings wrappers
         // over it, then the dupe-safe session registry, then the item-moving and open-routing layers.
-        // The pool cap is sized to the backend: threads beyond the JDBC connection count only block
-        // inside Hikari, so SQLite (1 connection) gets a small handful and the remote backends get
-        // roughly twice their connection pool (headroom for encode/decode work around the DB call).
+        // Storage calls now complete at memory speed (the SQL side is only touched by autosave/backup),
+        // so the pool's real work is item encode/decode; a small handful of threads is plenty, but the
+        // remote-backend sizing is kept as harmless headroom.
         boolean sqliteBackend = pluginConfig.getDatabaseType().equalsIgnoreCase("sqlite");
         dbExecutor     = new DbExecutor(sqliteBackend ? 4 : Math.max(8, pluginConfig.getDbPoolSize() * 2));
         storageGateway = new StorageGateway(storage, dbExecutor);
@@ -139,19 +147,29 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
             backupService.backupNowAsync();
         }
 
+        // Periodic write-back of dirty in-memory rows to the database + eviction of flushed offline
+        // players (the final full save happens in CachedStorage.close() at shutdown).
+        autosaveService = new AutosaveService(storage, foliaLib, getSLF4JLogger(), telemetry,
+                pluginConfig.getAutosaveIntervalMillis());
+        autosaveService.start();
+
         var pm = getServer().getPluginManager();
         pm.registerEvents(new VanillaEnderChestListener(chestOpener), this);
         pm.registerEvents(new EnderChestGuiListener(sessionManager, foliaLib, languageManager, pluginConfig), this);
         pm.registerEvents(new PlayerQuitListener(sessionManager, foliaLib), this);
         pm.registerEvents(new JoinMigrationListener(pluginConfig, migrationService, storage,
                 dbExecutor, getSLF4JLogger()), this);
-        pm.registerEvents(new PlayerSettingsListener(settingsCache, chestOpener), this);
+        pm.registerEvents(new PlayerSettingsListener(settingsCache, chestOpener, storage,
+                autosaveService), this);
 
-        // Preload settings for players already online (a /reload or hot-load fires no join event for
-        // them); without this their first dialog open would fall back to a DB read each time. The name
-        // index is unaffected here — it is written lazily by ChestOpener the first time a player opens
-        // their ender chest, not on join/preload.
-        getServer().getOnlinePlayers().forEach(p -> settingsCache.preloadSettings(p.getUniqueId()));
+        // Pin + preload players already online (a /reload or hot-load fires no join event for them):
+        // the pin keeps them cache-resident while online, and the settings preload also materializes
+        // their chest rows (the same prefetch the join listener performs). The name index is unaffected
+        // here — it is written lazily by ChestOpener the first time a player opens their ender chest.
+        getServer().getOnlinePlayers().forEach(p -> {
+            storage.pin(p.getUniqueId());
+            settingsCache.preloadSettings(p.getUniqueId());
+        });
 
         updateChecker = new UpdateChecker(getPluginMeta().getVersion(), getSLF4JLogger());
         pm.registerEvents(new UpdateNotifyListener(foliaLib, updateChecker, languageManager), this);
@@ -173,6 +191,9 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         if (backupService != null) {
             backupService.stop();
         }
+        if (autosaveService != null) {
+            autosaveService.stop();
+        }
         // Flush live sessions and pending saves first, drop the settings cache, then close the async
         // pool last — so the flush above can still dispatch its writes onto it.
         if (sessionManager != null) {
@@ -189,6 +210,8 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         if (dbExecutor != null) {
             dbExecutor.shutdown();
         }
+        // Last: writes ALL still-dirty in-memory data to the database (the "save everything at
+        // shutdown" half of the keep-in-memory model), then closes the connection pool.
         if (storage != null) {
             storage.close();
         }
@@ -218,6 +241,7 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         expirySweeper.reschedule(pluginConfig.getExpiryCheckIntervalMillis());
         backupService.reschedule(pluginConfig.isBackupEnabled(), pluginConfig.getBackupIntervalMillis(),
                 pluginConfig.getBackupKeep());
+        autosaveService.reschedule(pluginConfig.getAutosaveIntervalMillis());
 
         // Database settings are bound when the connection pool is built at startup; rebuilding it on a
         // live reload could drop connections mid-save and risk dupes, so we don't. Warn if they changed.

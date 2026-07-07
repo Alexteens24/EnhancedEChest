@@ -9,8 +9,19 @@ time. This is enforced on two levels:
 - **In memory** — every open chest is backed by **one shared `Inventory`** (the *session*), so two
   concurrent viewers (e.g. owner + admin) mutate the same `ItemStack[]` and Bukkit serialises their
   moves. Item-level duping between viewers is structurally impossible on a single-threaded platform.
-- **At the DB** — a chest is loaded fresh on its first open and written back when its **last** viewer
+- **At the store** — a chest is loaded fresh on its first open and written back when its **last** viewer
   closes; a re-open waits for any in-flight save of that same chest first (`pendingSaves` / `waitPending`).
+
+> **"The DB" below means the storage layer**, which since the cache refactor is the lazy write-back
+> `CachedStorage` (a player's SQL rows are loaded once on first touch — join prefetch or on-demand
+> miss — and written back by the periodic autosave, the per-player quit write-back, and the shutdown
+> flush — see [storage-and-schema.md](storage-and-schema.md#lazy-write-back-cache-cachedstorage--authoritative-for-resident-owners)).
+> Every load/save described here is a memory operation once the owner is resident (a cache miss does
+> its JDBC read on the same executor thread, inside the storage call), and the whole ordering model
+> (`pendingSaves`, `waitPending`, `runExclusive`) is **unchanged and still load-bearing**: the
+> save-on-close and the load-on-reopen run on different executor threads, so the pending-save-wait is
+> what guarantees a reopen observes the close's write. Eviction is safe against this model because it
+> only takes owners whose rows are fully flushed, and any later access transparently reloads them.
 
 The dupe-safety core (the `sessions` registry, attach/detach, `runExclusive`, `forceCloseAll`) lives in
 one closed class, `ChestSessionManager` (package `com.enhancedechest.service`). The GUI-flow layers sit
@@ -162,10 +173,12 @@ full item-moving transaction model.
 - Storage methods are **synchronous** and thread-agnostic (see `EnderChestStorage` Javadoc).
 - The `com.enhancedechest.service` layer is the **only** dispatcher onto the async pool, and it goes
   through the shared `DbExecutor` (daemon pool `EnhancedEchest-db`, capped per backend by the plugin:
-  4 threads on SQLite's single connection, ~2× `database.pool-size` on MySQL/PostgreSQL — threads past
-  the JDBC pool only block inside Hikari).
+  4 threads on SQLite, ~2× `database.pool-size` on MySQL/PostgreSQL). Since the cache refactor these
+  threads touch JDBC only on a cache miss (an owner's first load; flushes run on `AutosaveService`/backup
+  timers); their usual work is item encode/decode, so the sizing is just harmless headroom.
 - Session bookkeeping is single-threaded via `onGlobal`.
 - Anything touching a player/inventory/block runs on the right region thread via FoliaLib.
 - On shutdown, `ChestSessionManager.shutdown()` runs `persistOpenSessions()` (saves every still-open
   session) then `flushPendingSaves()` (blocks ≤30s for all writes); only then does `DbExecutor.shutdown()`
-  close the pool, and storage closes last.
+  close the pool, and storage closes last — `CachedStorage.close()` performs the final full flush of all
+  dirty in-memory rows to SQL before closing the connection pool.

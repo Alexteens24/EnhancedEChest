@@ -85,6 +85,10 @@ Cấu hình nơi lưu nội dung rương Ender. SQLite dùng được ngay khôn
 Backend lưu trữ. Giá trị được hỗ trợ: <code>sqlite</code>, <code>mysql</code>, <code>mariadb</code>, <code>postgres</code>.
 </ConfigProperty>
 
+<ConfigProperty name="autosave-interval" value="5m" type="string">
+Tần suất ghi các thay đổi trong bộ nhớ về cơ sở dữ liệu (dữ liệu của mỗi người chơi trực tuyến được giữ trong bộ nhớ; cũng được lưu vài giây sau khi họ thoát và một lần khi tắt máy chủ). Tối thiểu <code>30s</code>. Xem <a href="/vi/docs/database#cach-du-lieu-duoc-luu">Cách dữ liệu được lưu</a>.
+</ConfigProperty>
+
 <ConfigProperty name="sqlite-file" value="enderchests.db" type="string">
 File cơ sở dữ liệu SQLite, tương đối với thư mục dữ liệu của plugin. Chỉ dùng khi <code>type</code> là <code>sqlite</code>.
 </ConfigProperty>
@@ -193,6 +197,8 @@ permission-chests:
 database:
   # Backend lưu trữ: sqlite | mysql | mariadb | postgres
   type: sqlite
+  # Tần suất ghi các thay đổi trong bộ nhớ về cơ sở dữ liệu. Tối thiểu 30s.
+  autosave-interval: 5m
   # SQLite: đường dẫn tương đối với thư mục dữ liệu của plugin
   sqlite-file: enderchests.db
   # Port mặc định MySQL/MariaDB: 3306 | Port mặc định Postgres: 5432

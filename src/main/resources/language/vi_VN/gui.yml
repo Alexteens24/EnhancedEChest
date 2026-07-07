@@ -50,7 +50,7 @@ dialog:
   rename-desc: '<white>Đặt tên hiển thị tùy chỉnh cho rương này.'
   choose-icon: '<white>Chọn biểu tượng'
   choose-icon-desc: '<white>Chọn một vật phẩm làm biểu tượng cho rương này trong danh sách.'
-  # Nút Sắp xếp — chỉ hiện khi enderchest.features.sort được bật trong config.yml.
+  # Nút Sắp xếp; chỉ hiện khi enderchest.features.sort được bật trong config.yml.
   sort: '<white>Sắp xếp'
   sort-desc: '<white>Gộp các vật phẩm giống nhau thành stack và sắp xếp lại rương theo loại vật phẩm.'
   # Quay lại hộp thoại trước; dùng lại cho bộ chọn biểu tượng.
@@ -65,13 +65,13 @@ dialog:
   # ===== Hộp thoại chọn biểu tượng =====
   icon-title: '<white>Chọn Biểu Tượng'
   # {count} = số vật phẩm khớp (cuộn danh sách để xem thêm).
-  icon-body: '<white>{count} vật phẩm — nhập tên rồi nhấn Tìm để lọc. Cuộn để xem.'
+  icon-body: '<white>{count} vật phẩm. Nhập tên rồi nhấn Tìm để lọc; cuộn để xem.'
   icon-search-label: '<white>Tìm'
   icon-search: '<white>Tìm'
   icon-default: '<white>Mặc định'
   icon-default-desc: '<white>Hiển thị rương này không có biểu tượng.'
 
-  # ===== Hộp thoại nhập (/ee import — sao chép backend cơ sở dữ liệu cũ vào backend đang dùng) =====
+  # ===== Hộp thoại nhập (/ee import: sao chép backend cơ sở dữ liệu cũ vào backend đang dùng) =====
   import-title: '<white>Nhập từ cơ sở dữ liệu khác'
   import-body: '<gray>Chuyển dữ liệu từ cơ sở dữ liệu cũ sang cơ sở dữ liệu đã đặt trong config. Cơ sở dữ liệu mới phải <white>trống</white> trước khi bắt đầu.'
   # Nhãn các trường.
@@ -85,7 +85,7 @@ dialog:
   import-run-desc: '<white>Sao chép mọi rương từ cơ sở dữ liệu nguồn vào cơ sở dữ liệu đang dùng.'
   # Nút chọn loại nguồn (nút trên cùng của cột, trên nút Bắt đầu nhập + Hủy). Nhãn hiển thị loại hiện tại và
   # bấm vào để chuyển loại; chi tiết nằm trong tooltip bên dưới. Chỉ 2 loại: SQLite (một tệp) hoặc Máy chủ
-  # (MySQL / MariaDB / PostgreSQL — dùng chung một biểu mẫu).
+  # (MySQL / MariaDB / PostgreSQL; dùng chung một biểu mẫu).
   import-type-sqlite: '<white>Loại: <yellow>SQLite'
   import-type-server: '<white>Loại: <yellow>Máy chủ'
-  import-type-desc: '<white>Loại cơ sở dữ liệu nguồn — bấm để đổi.<newline><gray>SQLite đọc một tệp; Máy chủ đọc host MySQL, MariaDB hoặc PostgreSQL (dùng cổng 5432 cho PostgreSQL).'
+  import-type-desc: '<white>Loại cơ sở dữ liệu nguồn. Bấm để đổi.<newline><gray>SQLite đọc một tệp; Máy chủ đọc host MySQL, MariaDB hoặc PostgreSQL (dùng cổng 5432 cho PostgreSQL).'

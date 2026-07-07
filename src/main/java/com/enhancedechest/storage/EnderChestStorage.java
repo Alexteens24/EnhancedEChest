@@ -18,6 +18,10 @@ import java.util.UUID;
  *
  * <p>Ownership model: a player owns a chest iff a row exists for (player_uuid, chest_index).
  * Chests are created explicitly (admin command, API, or the auto-bootstrap of the first chest).
+ *
+ * <p>The sole implementation is the lazy write-back {@link CachedStorage} (per-player load on first
+ * touch, dirty-row flush); the SQL side of the plugin implements the much narrower
+ * {@link StorageBackend} instead (per-player reads, batched flush, import/backup — no per-row writes).
  */
 public interface EnderChestStorage {
 

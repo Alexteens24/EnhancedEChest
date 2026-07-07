@@ -37,9 +37,20 @@ For the full design, read [ARCHITECTURE.md](ARCHITECTURE.md). For user-facing do
 - **Threading / Folia:** all scheduling goes through `FoliaLib` so the jar runs on Paper/Folia.
   `runAsync` / `runAtEntity` / `runAtLocation` take a `Consumer<WrappedTask>`, **not** a `Runnable`;
   the `*Later` variants have `Runnable` overloads. Never touch entities/blocks off their region thread.
-- **DB access is synchronous** in the storage layer; the `com.enhancedechest.service` layer is the only
-  place allowed to dispatch storage calls onto the async executor, and it does so through the shared
-  `DbExecutor` (pool `EnhancedEchest-db`). Don't call storage from a region/main thread.
+- **Storage is a lazy-load + write-back cache** — the `EnderChestStorage` everyone sees is
+  `CachedStorage`: a player's rows are read from SQL once on first touch (join prefetch via the settings
+  preload; any cache miss — e.g. an admin command on an offline player — loads on demand inside the
+  storage call) and served from memory after that, with identical semantics to the old SQL. Dirty rows
+  are flushed by `AutosaveService` (`database.autosave-interval`, default 5m, reload-safe), each quitter
+  is written back + evicted ~5s after quit (`flushQuitterLater`), flushed offline owners are evicted
+  after each autosave (`evictIdle`), and `CachedStorage.close()` does a final full flush at shutdown.
+  Backup and `/ee import` flush first. The **residency invariant is load-bearing**: per-owner ops go
+  through `withOwner` (residency re-check + op in one lock hold), dirty ⇒ resident, eviction takes only
+  clean owners — don't bypass it. Consequence: **cross-server sharing is still not supported**
+  (documented in user docs — don't claim otherwise). Storage methods stay synchronous; the
+  `com.enhancedechest.service` layer is still the only place allowed to dispatch storage calls onto the
+  async executor (shared `DbExecutor`, pool `EnhancedEchest-db`) — that convention is what keeps the
+  dupe-safety ordering intact, don't bypass it.
 - **Dupe-safety is load-bearing** — do not "optimize" away the model: one **shared `Inventory` per open
   chest** (so concurrent viewers can't dupe), load-fresh on first open, save on **last** viewer close,
   pending-save-wait on reopen. All open paths must funnel through `ChestSessionManager.open`; session
@@ -72,7 +83,7 @@ For the full design, read [ARCHITECTURE.md](ARCHITECTURE.md). For user-facing do
   - **2+ chests otherwise** (no main set, or no permission) → management dialog.
   The main chest is **never auto-assigned**: `createChest`/`ensureChest` insert with `is_primary = 0` and
   deletes do not promote a survivor — it is set only by the dialog's "Set as main" (`setPrimary`). So
-  `is_primary` is zero-or-one per player; `getPrimaryIndex`/`SQL_PRIMARY` filters `kind <> 1` (non-TEMP)
+  `is_primary` is zero-or-one per player; `getPrimaryIndex` filters non-TEMP (`kind != TEMP`)
   and falls back to the lowest such index when none is flagged (keeps single-chest `/ec` working — and
   lets a PERM chest be opened/set as main). "Real chest" counting in the router is `kind != TEMP` (NORMAL
   **and** PERM). The list marks the main chest with a gold `★` appended to its label (`gui.yml

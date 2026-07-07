@@ -2,16 +2,27 @@
 
 All notable changes to EnhancedEchest are recorded here, newest first.
 
+## 1.0.8 - Unreleased
+
+This release changes how data is stored while the server runs: each player's ender chests are loaded into memory when they join and served from there, so opening and closing chests runs no database queries, no matter which backend you use.
+
+### Changed
+
+- **Ender chest data is now cached in memory per player.** A player's chests are loaded from the database once, when they join, and every operation after that is served from memory. Changes are written back automatically every 5 minutes (new `database.autosave-interval` setting, minimum 30s, applies on `/ee reload`), a few seconds after a player quits, and one final time at server shutdown. Memory use stays proportional to the number of online players, not the size of the database.
+  - Admin commands on offline players (`/ee view`, `/ee resize`, `/ee transfer`, ...) still work exactly as before: that player's data is loaded on demand and released again after the next autosave.
+  - Automatic backups and `/ee import` always write pending changes first, so they still see complete data.
+- **Sharing one database between several servers is not supported.** Each server holds its own authoritative copy of an online player's data and writes it back on its own schedule, so two servers on the same database (for example behind a proxy with fast server switching) could overwrite each other. Run each server with its own database or SQLite file; cross-server ender chest support will not be available for now.
+
 ## 1.0.7 - 2026-07-05
 
-**Critical bug fix — item duplication. Please update immediately, especially on Folia.**
+**Critical bug fix: item duplication. Please update immediately, especially on Folia.**
 
 ### Fixed
 
 - **Critical:** fixed an item duplication exploit triggered by re-opening an ender chest rapidly (spam right-clicking the block, or mixing `/ec` with a right-click while the chest was still opening). The overlapping opens could silently disconnect the on-screen chest from saving: items taken out afterwards were never removed from the database and reappeared on the next open.
   - Easiest to trigger on Folia, where opening a chest takes longer, but the window existed on Paper too.
   - Fixed at every layer: a single right-click can no longer start two opens, duplicate open requests are collapsed into one, and a chest window can no longer outlive its save tracking.
-- Fixed spam right-clicking an ender chest playing the lid open/close sound over and over. A duplicate open request arriving while the chest is already open (or still loading) is now ignored instead of closing and re-opening the chest — this also removes the pointless save/load each of those cycles caused.
+- Fixed spam right-clicking an ender chest playing the lid open/close sound over and over. A duplicate open request arriving while the chest is already open (or still loading) is now ignored instead of closing and re-opening the chest. This also removes the pointless save/load each of those cycles caused.
 - Fixed the update notification's download line showing raw colour codes (for example `&#9B59B6EnhancedEchest &8» &r`) instead of the formatted plugin prefix. Messages that mix the `&`-code prefix with MiniMessage text (like the clickable download link) now format both parts correctly.
 
 ## 1.0.6 - 2026-07-04

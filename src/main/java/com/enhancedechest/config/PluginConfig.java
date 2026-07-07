@@ -49,6 +49,8 @@ public final class PluginConfig {
 
     // Database — common
     private String databaseType;
+    /** How often the in-memory data is written back to the database (also written once at shutdown). */
+    private long autosaveIntervalMillis;
 
     // SQLite
     private String sqliteFile;
@@ -99,6 +101,9 @@ public final class PluginConfig {
 
         databaseType = config.getString("database.type", "sqlite");
         sqliteFile   = config.getString("database.sqlite-file", "enderchests.db");
+        // Clamped to at least 30s so a typo can never turn the autosave into a busy loop.
+        autosaveIntervalMillis = Math.max(30_000L,
+                parseDuration(config.getString("database.autosave-interval", "5m"), "5m"));
 
         dbHost     = config.getString("database.host", "localhost");
         dbPort     = config.getInt("database.port", 3306);

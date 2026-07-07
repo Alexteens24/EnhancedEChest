@@ -7,18 +7,80 @@ for `(player_uuid, chest_index)`. There is no separate "owners" table. All metho
 and thread-agnostic — the `com.enhancedechest.service` layer is the only caller and dispatches them onto
 the shared `DbExecutor` async pool (see [concurrency-and-dupe-safety.md](concurrency-and-dupe-safety.md)).
 
-`AbstractSqlStorage` holds all DML as plain SQL valid across SQLite, MySQL/MariaDB and PostgreSQL. Only
+### Lazy write-back cache (`CachedStorage`) — authoritative for resident owners
+
+The `EnderChestStorage` the rest of the plugin sees is **`CachedStorage`**, a decorator over the SQL
+backend that loads **one player's rows on first touch** and serves everything from memory after that.
+It is split into three collaborators in the `storage` package: `CachedStorage` itself is now a thin
+façade holding only the ender-chest domain logic; the coherence engine (the single lock, the
+`withOwner` load-on-miss protocol, `flush`/`flushOwner`/`evictIdle`, `pin`/`unpin`) lives in
+**`OwnerResidencyCache`**, and the pure in-memory row model + dirty tracking (the `chests`/`players`
+maps, `dirtyChests`/`dirtyPlayers`, and every low-level row op) lives in **`ChestCacheState`**, whose
+methods all run under the engine's lock. The behaviour below is unchanged by that split:
+
+- `init()` initializes the SQL backend (schema + `SchemaMigrator`) only — no bulk load. A player's
+  `enderchests` + `players` rows are read once by `loadOwner` (backend `loadChests`/`loadPlayer`) on
+  the first storage call that touches them: normally the join prefetch (the settings preload in
+  `PlayerSettingsListener` materializes the whole owner), otherwise on demand inside whatever call
+  missed — an admin command on an offline player, an expiry sweep, a migration.
+- **Residency invariant (load-bearing):** an owner's rows exist in memory iff the owner is in the
+  `resident` set. Every per-owner method runs through `withOwner`, which re-checks residency and runs
+  the operation **in the same lock hold**, so an eviction can never interleave between load and op.
+  Corollaries: **dirty ⇒ resident**, and eviction takes only **clean** owners — so a non-resident
+  owner's SQL rows are always current (this is what lets `findExpired`/`findUuidByName` trust the
+  backend for non-resident owners). Concurrent misses on one owner collapse to a single backend read
+  (the `loading` future map).
+- Every interface method keeps **identical semantics** to the SQL implementation it replaced — index
+  allocation (`max+1`), primary fallback, the transfer collision rules, targeted settings upserts,
+  `saveChest` being a no-op on a deleted row, and so on. Writes mark the row **dirty**.
+- `flush()` snapshots dirty rows under the lock, then writes them to SQL **outside** it —
+  `flushChests`/`flushPlayers` on `AbstractSqlStorage` are one transaction per table, portable
+  delete-then-insert full-row replaces (reusing the verbatim import inserts). Row presence at flush time
+  decides upsert vs `DELETE`. A failed flush re-marks the rows dirty and they retry on the next autosave.
+- Write-back + eviction is driven by **`AutosaveService`**: the periodic timer
+  (`database.autosave-interval`, default `5m`, min 30s, reload-safe) calls `flush()` then `evictIdle()`
+  (drops every owner that is offline/unpinned **and** clean); `flushQuitterLater` writes back and evicts
+  one player ~5s after they quit (delayed so the close-save of a chest open at quit lands first; a
+  rejoin re-pins them and the eviction declines); and **`CachedStorage.close()`** does the final full
+  save at shutdown (ordered after `sessionManager.shutdown()` + `dbExecutor.shutdown()` in `onDisable`).
+  The join/quit listener maintains the `pinned` set (online owners are never evicted).
+- Whole-database questions go to the backend: `findExpired` takes the backend's expiry candidates,
+  loads each candidate owner, and lets the authoritative in-memory row decide (offline players' temp
+  chests still expire; a stale candidate whose expiry changed in memory is ignored); `countChests`,
+  `findUuidByName` and `loadAllPlayerNames` (startup name index) **flush first**, then trust SQL
+  wholesale — so a rename resolves (and the old name stops resolving) with no autosave-interval lag,
+  matching the pre-cache direct-SQL semantics.
+- The two paths that read the SQL side directly both **flush first**: `backup(Path)` (so the snapshot
+  contains every in-memory change) and `importRows` (`/ee import`; imported rows refresh only owners
+  already resident, not dirtied — everyone else lazy-loads them from SQL).
+
+Consequences: memory stays **proportional to the online-player count** (plus owners touched by admin
+commands, held at most one autosave interval); gameplay open/close costs zero queries once a player is
+loaded; a hard crash can lose at most one autosave interval of changes — and only for players online
+the whole time, since quitters are written back within seconds (the DB write on clean shutdown is
+guaranteed). **Cross-server sharing is still not supported**: while an owner is resident the cache is
+authoritative and the quit write-back is delayed, so fast server switches on a shared database can
+overwrite each other. The user docs state this explicitly.
+
+The SQL side implements the deliberately narrow **`StorageBackend`** interface (init/close, backup,
+`importRows`, per-player reads `loadChests`/`loadPlayer`, the whole-database reads
+`findExpired`/`countChests`/`findUuidByName`/`loadAllPlayers`, and the batched
+`flushChests`/`flushPlayers`) — nothing outside the cache layer holds a `StorageBackend` reference, and
+`AbstractSqlStorage` holds **no per-row write DML**; all row-level semantics (index allocation `max+1`,
+primary resolution, transfer collision rules, targeted settings upserts) live in `CachedStorage`. Only
 `CREATE TABLE` statements are dialect-specific, injected by each subclass (`SqliteStorage`,
 `MysqlStorage`, `PostgresStorage`) as a `String...` of DDL run in order by `init()` (currently
-`enderchests` + `players`). New chest indexes are computed in Java (`MAX(chest_index)+1`), so no
-dialect-specific upsert is required. Connections come from a HikariCP pool (size 1 for SQLite,
-configurable otherwise). `StorageFactory` picks the backend from `config.type`.
+`enderchests` + `players`). Connections come from a HikariCP pool (size 1 for SQLite, configurable
+otherwise). `StorageFactory` picks the backend from `config.type`. The `DbExecutor` dispatch convention
+is unchanged (services still never call storage on a region/main thread; cache-miss JDBC runs on those
+executor threads), which is what keeps the dupe-safety ordering model intact without modification.
 
 SQLite runs in **WAL mode** with `synchronous=NORMAL` (set as driver properties in
 `SqliteStorage.buildConfig`, applied as PRAGMAs per connection; `journal_mode` also persists in the DB
 file): readers aren't blocked by the writer and commits become WAL appends. Its `connectionTimeout` is a
-deliberate **30s** — the backup's `VACUUM INTO` holds the single connection for the whole snapshot, and a
-save that lands mid-backup must ride that out and then succeed rather than time out unwritten.
+deliberate **30s** — the backup's `VACUUM INTO` holds the single connection for the whole snapshot, and
+an autosave flush that lands mid-backup must ride that out and then succeed rather than time out
+unwritten.
 
 `init()` also calls `SchemaMigrator.migrate()` right after running the CREATE statements: a versioned,
 forward-only migrator (`schema_meta` table) that brings an existing (older) database up to the current
@@ -26,8 +88,8 @@ schema — additive column steps guarded by a JDBC-metadata `columnExists` check
 renames/merges guarded by `tableExists` (e.g. the 1.0.4 `player_settings` → `players` merge). A fresh
 install's CREATE statements already carry every column, so the migrator's steps no-op on it.
 
-**Rule:** all DML portable, only DDL per-dialect. Avoid `ON CONFLICT` / `ON DUPLICATE KEY`; do a portable
-`UPDATE`-then-`INSERT`-if-no-row upsert instead.
+**Rule:** all SQL portable, only DDL per-dialect. Avoid `ON CONFLICT` / `ON DUPLICATE KEY`; the flush
+upserts are portable delete-then-insert full-row replaces instead.
 
 ## Schema: `enderchests`
 
@@ -42,22 +104,22 @@ install's CREATE statements already carry every column, so the migrator's steps 
 | `migrated` | flag, meaningful on chest #1 only |
 | `last_updated` | write timestamp |
 | `kind` | `0` = NORMAL, `1` = TEMP (overflow), `2` = PERM (permission-granted) — see [expiry-and-temp-chests.md](expiry-and-temp-chests.md) and [commands-and-permissions.md](commands-and-permissions.md#permission-granted-chests) |
-| `expires_at` | nullable epoch-ms expiry; `NULL` = never. Indexed (`idx_enderchests_expires`) |
+| `expires_at` | nullable epoch-ms expiry; `NULL` = never. Queried by the sweep's DB-side candidate scan (`findExpired`) every sweep, so `SchemaMigrator.ensureIndexes` best-effort-creates `idx_enderchests_expires` on every start (idempotent, reusing the historical index name; failures swallowed) — without it the scan is a full table scan, and on SQLite the inline blobs make that read most of the DB file each sweep on a large roster |
 | `icon` | nullable material key (e.g. `minecraft:diamond`) of the list icon; `NULL` = default. Rendered as an Adventure sprite component in the dialogs |
 
-Key operations: `createChest` (next index, **never** auto-primary; optional `expiresAt`), `createPermChest`
+Key operations (all served from memory by `CachedStorage`): `createChest` (next index, **never**
+auto-primary; optional `expiresAt`), `createPermChest`
 (next index, `kind = PERM`, no expiry, never auto-primary — used by the permission reconcile), `ensureChest`
 (create at a fixed index if absent — migration only, also never auto-primary), `resizeChest`,
 `deleteChest` (**no survivor promotion** — if the deleted chest was the main, the player simply has no
-main until they pick one), `renameChest`, `setIcon`, `setPrimary` (clear-then-set in a transaction — the
+main until they pick one), `renameChest`, `setIcon`, `setPrimary` (clear-then-set — the
 only way a chest becomes primary), `clearPrimary`, `isMigrated`/`setMigrated`, the item-moving
-`spillShrink` / `spillRemove`, and the sweeper query `findExpired`. `saveChest` is **UPDATE-only** and
-never touches size, name, or primary.
+`spillShrink` / `spillRemove`, and the sweeper query `findExpired`. `saveChest` updates contents only
+(a no-op on a deleted row) and never touches size, name, or primary.
 
-Primary resolution (`SQL_PRIMARY`) filters `kind <> 1` (everything **except** TEMP) and orders
-`is_primary DESC, chest_index ASC`, so it returns the flagged main when one exists and otherwise the
-lowest-indexed non-temp chest. Both NORMAL and PERM chests are eligible to be opened by `/ec` and set as
-the main; only temp chests are excluded.
+Primary resolution (`getPrimaryIndex`) filters `kind != TEMP` (everything **except** TEMP) and prefers
+the flagged main, otherwise the lowest-indexed non-temp chest. Both NORMAL and PERM chests are eligible
+to be opened by `/ec` and set as the main; only temp chests are excluded.
 
 ## Schema: `players`
 
@@ -76,9 +138,9 @@ DB-level defaults. Named `players` rather than `player_settings` because it also
 
 Mapped to the `PlayerSettings` record (loaded/saved **whole**, never null — an absent row reads as
 `PlayerSettings.defaults()`). `saveSettings` (whole object) and `setEditMode`/`setAppliedDefaultSize`
-(single targeted field, no preceding read) are all portable upserts — `saveSettings` deliberately excludes
+(single targeted field) are targeted upserts on the in-memory row — `saveSettings` deliberately excludes
 `username`, which is written only by the separate `upsertPlayerName`/`findUuidByName` pair, so a save built
-from a stale in-memory `PlayerSettings` can never clobber a name recorded since it was loaded.
+from a stale `PlayerSettings` copy can never clobber a name recorded since it was loaded.
 
 `upsertPlayerName` is called **lazily**, and not on join at all: `ChestOpener.reconcileForOpen` — the
 shared prelude for every self-open path (`/ec`, `/eclist`, right-click) — reuses the settings row it
@@ -86,17 +148,19 @@ already loaded there, compares the loaded `username` against the player's curren
 when they differ (a rename, or the first time that player ever opens an ender chest). A player who joins
 but never opens a chest costs no write at all.
 
-**To add a setting:** add a component to `PlayerSettings`, a column to all three DDLs, and a mapping in
-`loadSettings`/`saveSettings`.
+**To add a setting:** add a component to `PlayerSettings`, a column to all three DDLs (+ a
+`SchemaMigrator` step), a field on `RawPlayerRow` mapped in `loadAllPlayers`/`batchPlayers`, and the
+in-memory `PlayerRow` handling in `CachedStorage`.
 
 ### Write-through settings cache (`PlayerSettingsCache`)
 
 Settings are read on every dialog open, so they are cached in RAM keyed by UUID. `PlayerSettingsListener`
 preloads on join and evicts on quit, so the map is **bounded by the online-player count**.
-`loadSettingsAsync` serves from the cache (a miss falls back to a one-off DB read that is *not* cached,
-keeping `preloadSettings` the sole inserter). `setEditModeAsync` is **write-through**: it updates the
-cached copy in place (`computeIfPresent`, never inserts) and writes the DB immediately, so the cache
-never holds dirty state and needs no shutdown flush.
+`loadSettingsAsync` serves from the cache (a miss falls back to a one-off storage read that is *not*
+cached, keeping `preloadSettings` the sole inserter). `setEditModeAsync` is **write-through**: it updates
+the cached copy in place (`computeIfPresent`, never inserts) and writes the store immediately, so the
+cache never holds dirty state and needs no shutdown flush. (With `CachedStorage` underneath this is a
+cache over a cache — kept because it also carries the join/quit lifecycle and the lazy username write.)
 
 **Leak-free invariant:** every entry is added by a join preload and removed by the matching quit
 eviction; the join-then-immediate-quit race is closed by a post-load online re-check in `preloadSettings`
@@ -124,7 +188,8 @@ Stored bytes are `[1-byte version tag] + [body]`. The tag lets the format evolve
 ## Auto-backup (`BackupService`)
 
 Scheduled DB snapshots, modelled on `ExpirySweeper`: a FoliaLib async repeating timer at `backup.interval`
-calls `EnderChestStorage.backup(Path)`, then prunes the `backup.folder` to the most recent `backup.keep`
+calls `EnderChestStorage.backup(Path)` — which, on `CachedStorage`, first flushes all dirty in-memory rows
+so the snapshot is complete — then prunes the `backup.folder` to the most recent `backup.keep`
 files (`keep <= 0` = unlimited). Snapshot names are `enderchests-<yyyyMMdd-HHmmss>.db`, so lexical order is
 chronological. All work runs off the region/main thread and failures are logged, never thrown.
 
