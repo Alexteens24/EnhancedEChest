@@ -3,6 +3,7 @@ package com.enhancedechest.storage;
 import com.enhancedechest.storage.ChestCacheState.DirtyBatch;
 import com.enhancedechest.storage.EnderChestStorage.RawChestRow;
 import com.enhancedechest.storage.EnderChestStorage.RawPlayerRow;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.HashMap;
@@ -55,6 +56,15 @@ final class OwnerResidencyCache {
 
     /** Serializes flushes (autosave, quit, backup-triggered, shutdown) so backend writes never interleave. */
     private final Object flushLock = new Object();
+
+    /**
+     * Quitters waiting for their write-back. {@link #flushOwner} enqueues its owner <i>before</i>
+     * contending on {@link #flushLock}; whichever quitter gets the lock first drains the whole queue
+     * and flushes every drained owner in one batch (group commit), so a burst of quits costs one
+     * backend transaction instead of one per player. Later quitters find their entry consumed, get an
+     * empty batch, and go straight to their eviction check.
+     */
+    private final Set<UUID> quitQueue = ConcurrentHashMap.newKeySet();
 
     OwnerResidencyCache(StorageBackend backend, ChestCacheState state, Logger logger) {
         this.backend = backend;
@@ -194,51 +204,74 @@ final class OwnerResidencyCache {
      * @return the number of rows written or deleted (0 when nothing was dirty)
      */
     int flush() {
-        return flushInternal(null);
+        synchronized (flushLock) {
+            return flushHoldingLock(null);
+        }
     }
 
-    /** Flush implementation; {@code only} non-null restricts it to that owner's dirty rows. */
-    private int flushInternal(UUID only) {
-        synchronized (flushLock) {
-            DirtyBatch batch;
-            synchronized (lock) {
-                batch = state.collectDirty(only);
-                if (batch.isEmpty()) {
-                    return 0;
-                }
+    /**
+     * Flush body; the caller must hold {@link #flushLock}. {@code only} non-null restricts the drain
+     * to those owners' dirty rows.
+     */
+    private int flushHoldingLock(@Nullable Set<UUID> only) {
+        DirtyBatch batch;
+        synchronized (lock) {
+            batch = state.collectDirty(only);
+            if (batch.isEmpty()) {
+                return 0;
             }
-            try {
-                if (!batch.chestUpserts().isEmpty() || !batch.chestDeletes().isEmpty()) {
-                    backend.flushChests(batch.chestUpserts(), batch.chestDeletes());
-                }
-                if (!batch.playerRows().isEmpty()) {
-                    backend.flushPlayers(batch.playerRows());
-                }
-            } catch (RuntimeException e) {
-                // Put the keys back so the next autosave retries them with their then-current state.
-                synchronized (lock) {
-                    state.restoreDirty(batch);
-                }
-                throw e;
-            }
-            return batch.chestUpserts().size() + batch.chestDeletes().size() + batch.playerRows().size();
         }
+        try {
+            if (!batch.chestUpserts().isEmpty() || !batch.chestDeletes().isEmpty()) {
+                backend.flushChests(batch.chestUpserts(), batch.chestDeletes());
+            }
+            if (!batch.playerRows().isEmpty()) {
+                backend.flushPlayers(batch.playerRows());
+            }
+        } catch (RuntimeException e) {
+            // Put the keys back so the next autosave retries them with their then-current state.
+            synchronized (lock) {
+                state.restoreDirty(batch);
+            }
+            throw e;
+        }
+        return batch.chestUpserts().size() + batch.chestDeletes().size() + batch.playerRows().size();
     }
 
     /**
      * Writes one owner's dirty rows back to SQL, then evicts them if they ended up clean and are
      * still offline — the quit path, so a leaver's changes reach the database within seconds and
      * their memory is released. A rejoin before this runs simply re-pins the owner: the eviction
-     * check fails and the still-warm rows are reused. On flush failure the rows are re-marked dirty
-     * (next autosave retries) and the owner stays resident; the exception propagates to the caller.
+     * check fails and the still-warm rows are reused.
+     *
+     * <p>Quit bursts are group-committed: the owner is enqueued on {@link #quitQueue} before taking
+     * {@link #flushLock}, and whichever quitter holds the lock drains and flushes <i>every</i> queued
+     * owner in one batch. The owner's dirty rows are always covered: marks made before this call are
+     * visible (under {@link #lock}) to whichever drain consumed the queue entry, and an entry added
+     * after a drain snapshot is simply flushed by its own call. On flush failure every drained owner
+     * is re-marked dirty and re-queued (the next quitter or autosave retries), the owners stay
+     * resident, and the exception propagates to the caller that performed the write.
      */
     void flushOwner(UUID owner) {
-        flushInternal(owner);
-        // Hold flushLock across the cleanliness check + eviction for the same reason as evictIdle:
-        // never decide an owner is clean (and drop their rows) while some other flush's JDBC write is
-        // in flight with that owner's keys transiently removed from the dirty sets. Ordering is
-        // flushLock -> lock, matching flushInternal; flushInternal above has already released it.
+        quitQueue.add(owner);
+        // Hold flushLock across the group flush and the cleanliness check + eviction for the same
+        // reason as evictIdle: never decide an owner is clean (and drop their rows) while some flush's
+        // JDBC write is in flight with that owner's keys transiently removed from the dirty sets.
+        // Ordering is flushLock -> lock throughout, matching flushHoldingLock.
         synchronized (flushLock) {
+            Set<UUID> drained = new HashSet<>();
+            for (Iterator<UUID> it = quitQueue.iterator(); it.hasNext(); ) {
+                drained.add(it.next());
+                it.remove();
+            }
+            if (!drained.isEmpty()) {
+                try {
+                    flushHoldingLock(drained);
+                } catch (RuntimeException e) {
+                    quitQueue.addAll(drained);     // keep the group's write-back eager: retry on next quit
+                    throw e;
+                }
+            }
             synchronized (lock) {
                 if (!pinned.contains(owner) && state.isClean(owner)) {
                     state.dropOwner(owner);
@@ -263,7 +296,7 @@ final class OwnerResidencyCache {
         // owner looks clean while its rows are not yet persisted; evicting there would drop rows a
         // failed flush re-marks dirty with no backing row in memory, so the next flush would classify
         // them as deletes and wipe the owner from the database. Holding flushLock serializes against
-        // that whole window. Ordering is flushLock -> lock, matching flushInternal (no deadlock).
+        // that whole window. Ordering is flushLock -> lock, matching flushHoldingLock (no deadlock).
         synchronized (flushLock) {
             synchronized (lock) {
                 Set<UUID> dirtyOwners = state.dirtyOwners();

@@ -262,10 +262,10 @@ final class ChestCacheState {
     /**
      * Drains the dirty sets into a {@link DirtyBatch}: every drained chest key becomes an upsert (row
      * still present) or a delete (row gone), and every drained player key its current row. {@code only}
-     * non-null restricts the drain to that owner. The returned snapshots let a failed flush re-mark the
-     * exact drained keys dirty via {@link #restoreDirty}.
+     * non-null restricts the drain to those owners (the quit-path group flush). The returned snapshots
+     * let a failed flush re-mark the exact drained keys dirty via {@link #restoreDirty}.
      */
-    DirtyBatch collectDirty(@Nullable UUID only) {
+    DirtyBatch collectDirty(@Nullable Set<UUID> only) {
         List<RawChestRow> chestUpserts = new ArrayList<>();
         List<ChestKey> chestDeletes = new ArrayList<>();
         List<ChestId> chestSnapshot = new ArrayList<>();
@@ -273,7 +273,7 @@ final class ChestCacheState {
         List<UUID> playerSnapshot = new ArrayList<>();
         for (Iterator<ChestId> it = dirtyChests.iterator(); it.hasNext(); ) {
             ChestId id = it.next();
-            if (only != null && !only.equals(id.owner())) {
+            if (only != null && !only.contains(id.owner())) {
                 continue;
             }
             it.remove();
@@ -287,7 +287,7 @@ final class ChestCacheState {
         }
         for (Iterator<UUID> it = dirtyPlayers.iterator(); it.hasNext(); ) {
             UUID uuid = it.next();
-            if (only != null && !only.equals(uuid)) {
+            if (only != null && !only.contains(uuid)) {
                 continue;
             }
             it.remove();
