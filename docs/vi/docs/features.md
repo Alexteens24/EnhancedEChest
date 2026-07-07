@@ -66,6 +66,8 @@ Chạy <code>/eclist</code> để mở menu liệt kê mọi rương người ch
 
 <FeatureCard icon="Star" title="Rương Chính">
 Với nhiều rương, người chơi có thể chọn một rương làm <strong>rương chính</strong>, rương được mở trực tiếp bằng <code>/ec</code> và bằng chuột phải vào khối rương Ender. Cho đến khi chọn rương chính, những thao tác đó sẽ mở menu quản lý. Rương mới không bao giờ tự động trở thành rương chính; người chơi tự đặt từ menu (và luôn vào menu được bằng <code>/eclist</code>).
+
+Một ngoại lệ: khi người chơi đang có <strong>rương tạm</strong> chứa vật phẩm bị dồn (ví dụ sau khi rương bị thu nhỏ hoặc rương cấp theo rank bị thu hồi), mở rương Ender sẽ luôn hiện menu, kể cả khi đã đặt rương chính. Điều này bảo đảm người chơi thấy được số vật phẩm bị dồn. Khi lấy hết đồ, rương tạm tự biến mất và rương chính lại mở trực tiếp như thường.
 </FeatureCard>
 
 <FeatureCard icon="Palette" title="Tùy Chỉnh Từng Rương">

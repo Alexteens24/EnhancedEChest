@@ -66,6 +66,8 @@ Run <code>/eclist</code> to open a menu listing every chest the player owns, eac
 
 <FeatureCard icon="Star" title="Main Chest">
 With several chests, a player can pick one as their <strong>main</strong>, the one opened directly by <code>/ec</code> and by right-clicking an ender chest block. Until a main is chosen, those open the management menu instead. A new chest is never made main automatically; players set it from the menu (and can always reach the menu with <code>/eclist</code>).
+
+One exception: while a player has a <strong>temporary chest</strong> holding spilled items (for example after a resize or a revoked rank chest), opening the ender chest always shows the menu, even with a main set. This makes sure the spilled items are seen. Once the player empties the temporary chest, it disappears and the main chest opens directly again.
 </FeatureCard>
 
 <FeatureCard icon="Palette" title="Customize Each Chest">

@@ -4,7 +4,7 @@
 
 <CommandRow commands="/ec" :aliases="['/enderchest']" permission="enhancedechest.command.open">
 
-Mở rương Ender của bạn. Với một rương sẽ mở thẳng. Với nhiều rương, mở **rương chính** nếu đã đặt, hoặc menu quản lý nếu chưa. Rương đầu tiên được tạo tự động trong lần mở đầu tiên.
+Mở rương Ender của bạn. Với một rương sẽ mở thẳng. Với nhiều rương, mở **rương chính** nếu đã đặt, hoặc menu quản lý nếu chưa. Khi đang có rương tạm chứa vật phẩm bị dồn, menu sẽ luôn mở thay thế cho đến khi bạn lấy hết đồ. Rương đầu tiên được tạo tự động trong lần mở đầu tiên.
 
 </CommandRow>
 

@@ -4,7 +4,7 @@
 
 <CommandRow commands="/ec" :aliases="['/enderchest']" permission="enhancedechest.command.open">
 
-Opens your ender chest. With one chest it opens directly. With several chests, it opens your **main** if one is set, or the management menu if not. Your first chest is created automatically on first use.
+Opens your ender chest. With one chest it opens directly. With several chests, it opens your **main** if one is set, or the management menu if not. While you have a temporary chest with spilled items, the menu always opens instead until you empty it. Your first chest is created automatically on first use.
 
 </CommandRow>
 
