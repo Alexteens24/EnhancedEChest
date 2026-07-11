@@ -1,7 +1,7 @@
 <div align="center">
 
 <p align="center">
-  <img src="https://openvdra.github.io/EnhancedEchest/logo.png" alt="Logo" width="160">
+  <img src="https://openvdra.github.io/EnhancedEchest/logo.png" alt="Logo" width="160"> <h1>EnhancedEchest</h1>
 </p>
 
 [![Modrinth](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/compact/available/modrinth_vector.svg)](https://modrinth.com/plugin/enhancedechest)
