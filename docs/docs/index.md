@@ -1,5 +1,7 @@
 # Welcome to EnhancedEchest
 
+<img class="page-banner" src="/banner.png" alt="EnhancedEchest banner" />
+
 **EnhancedEchest** is a free, open-source Minecraft plugin. Give players bigger ender chest up to **54 slots**, customizable and with support for multiple chests per player, all managed from a clean in-game menu.
 
 ## Quick Navigation

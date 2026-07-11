@@ -1,6 +1,4 @@
-Give players bigger ender chest up to **54 slots**, customizable and with support for multiple chests per player. Every chest is managed from one clean in-game menu and survives restarts, resets, and world wipes.
-
-<p align="center"> <img src="https://github.com/user-attachments/assets/a1f8a60e-5f31-4a30-b91b-07c5ba9243bf" alt="An enhanced ender chest with 54 slots" width="360" /> </p>
+![Banner](https://cdn.modrinth.com/data/xgEWccga/images/484cb792ed1b21c4ad2cae8aa082b0d13d1bd554.png)
 
 <div align="center">
 

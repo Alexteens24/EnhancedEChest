@@ -1,5 +1,7 @@
 # Chào mừng đến với EnhancedEchest
 
+<img class="page-banner" src="/banner.png" alt="Banner EnhancedEchest" />
+
 **EnhancedEchest** là một plugin Minecraft miễn phí, mã nguồn mở. Cho người chơi rương Ender lớn hơn, tối đa **54 ô**, có thể tùy chỉnh và hỗ trợ sở hữu nhiều rương mỗi người chơi, tất cả quản lý từ một menu trong game gọn gàng.
 
 ## Điều Hướng Nhanh
