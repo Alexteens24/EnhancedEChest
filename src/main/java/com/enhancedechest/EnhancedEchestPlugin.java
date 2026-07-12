@@ -4,6 +4,8 @@ import com.enhancedechest.backup.BackupService;
 import com.enhancedechest.config.ConfigMigrations;
 import com.enhancedechest.config.PluginConfig;
 import com.enhancedechest.config.YamlMigrator;
+import com.enhancedechest.crossserver.CrossServerCoordinator;
+import com.enhancedechest.crossserver.RedisCoordinator;
 import com.enhancedechest.expiry.ExpirySweeper;
 import com.enhancedechest.gui.dialog.IconCatalog;
 import com.enhancedechest.lang.LanguageManager;
@@ -73,6 +75,8 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
     private Scheduler scheduler;
     private Metrics metrics;
     private Telemetry telemetry;
+    /** Non-null only in cross-server mode; the storage layer sees it as a {@link CrossServerCoordinator}. */
+    private RedisCoordinator redisCoordinator;
 
     @Override
     public void onEnable() {
@@ -95,12 +99,46 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         // can report errors; NOOP when no token was baked in at build time.
         telemetry = FastStatsTelemetry.create(this, pluginConfig);
 
+        // Cross-server mode: a Redis-backed owner-lock coordinator makes the lazy cache safe on a
+        // database shared by several servers (see CrossServerCoordinator). Both preconditions are
+        // hard requirements — running unsynchronized on a shared database risks item loss/dupes, so
+        // a misconfiguration disables the plugin instead of silently degrading.
+        CrossServerCoordinator coordinator = CrossServerCoordinator.NOOP;
+        if (pluginConfig.isCrossServerEnabled()) {
+            if (pluginConfig.getDatabaseType().equalsIgnoreCase("sqlite")) {
+                getSLF4JLogger().error("cross-server.enabled requires a shared mysql/mariadb/postgres "
+                        + "database — SQLite cannot be shared between servers. Set database.type on "
+                        + "every server, or turn cross-server off. Disabling the plugin.");
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+            String serverId = pluginConfig.getCrossServerServerId();
+            if (serverId == null || serverId.isBlank()) {
+                serverId = "srv-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+            }
+            redisCoordinator = new RedisCoordinator(pluginConfig.getRedisHost(),
+                    pluginConfig.getRedisPort(), pluginConfig.getRedisPassword(),
+                    pluginConfig.isRedisSsl(), pluginConfig.getRedisDatabase(),
+                    pluginConfig.getRedisKeyPrefix(), serverId, scheduler, getSLF4JLogger(), telemetry);
+            try {
+                redisCoordinator.init();
+            } catch (Exception e) {
+                getSLF4JLogger().error("cross-server.enabled but Redis at {}:{} is unreachable — "
+                        + "disabling the plugin rather than running unsynchronized on a shared database",
+                        pluginConfig.getRedisHost(), pluginConfig.getRedisPort(), e);
+                redisCoordinator.close();
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+            coordinator = redisCoordinator;
+        }
+
         // The SQL backend is wrapped in the lazy write-back cache: a player's rows are read from SQL
         // once on first touch (join prefetch / on-demand miss) and served from memory after that; the
         // SQL side is otherwise touched only by the periodic autosave, the per-player write-back after
         // a quit, backups/imports, and the final flush at shutdown (CachedStorage.close()).
         StorageBackend backend = StorageFactory.create(pluginConfig, getDataFolder().toPath());
-        storage         = new CachedStorage(backend, getSLF4JLogger(), telemetry);
+        storage         = new CachedStorage(backend, getSLF4JLogger(), telemetry, coordinator);
 
         try {
             storage.init();
@@ -125,6 +163,27 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         settingsCache  = new PlayerSettingsCache(storage, dbExecutor, getSLF4JLogger(), playerNameIndex, telemetry);
         sessionManager = new ChestSessionManager(languageManager, codec, storage,
                 getSLF4JLogger(), scheduler, dbExecutor, telemetry);
+
+        // Cross-server handover: when another server asks for an owner this one still holds, flush +
+        // evict + release them — but only once the player is gone from here and no chest session of
+        // theirs is open or mid-save (the requester re-asks every poll round, so deferring is safe).
+        // flushOwner performs the release itself via the eviction path's coordinator hooks.
+        if (redisCoordinator != null) {
+            redisCoordinator.setReleaseRequestHandler(uuid -> {
+                if (storage.isPinned(uuid) || sessionManager.hasActivity(uuid)) {
+                    return;
+                }
+                dbExecutor.run(() -> {
+                    try {
+                        storage.flushOwner(uuid);
+                    } catch (Exception e) {
+                        getSLF4JLogger().error("Cross-server handover flush failed for {} — the "
+                                + "requesting server will retry", uuid, e);
+                        telemetry.error(e, "crossserver.handover-flush");
+                    }
+                });
+            });
+        }
         spillService   = new ChestSpillService(sessionManager, storage, codec, storageGateway,
                 pluginConfig.getTempExpiryMillis());
         chestTransferService = new ChestTransferService(sessionManager, storage, codec, storageGateway,
@@ -228,6 +287,11 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         if (storage != null) {
             storage.close();
         }
+        // After the final flush: every owner's rows are now in SQL, so the distributed locks may be
+        // handed to whichever server the players land on next.
+        if (redisCoordinator != null) {
+            redisCoordinator.close();
+        }
         if (scheduler != null) {
             scheduler.cancelAllTasks();
         }
@@ -259,11 +323,13 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         // (or since the last reload) takes effect immediately.
         IconCatalog.reloadLocaleNames();
 
-        // Database settings are bound when the connection pool is built at startup; rebuilding it on a
-        // live reload could drop connections mid-save and risk dupes, so we don't. Warn if they changed.
+        // Database + cross-server settings are bound when the connection pool / Redis coordinator are
+        // built at startup; rebuilding them on a live reload could drop connections mid-save and risk
+        // dupes, so we don't. Warn if they changed.
         if (!databaseSignature().equals(previousDbSignature)) {
-            getSLF4JLogger().warn("Database settings changed in config but are still running on the "
-                    + "previous connection — a full server restart is required for them to take effect.");
+            getSLF4JLogger().warn("Database/cross-server settings changed in config but are still "
+                    + "running on the previous connection — a full server restart is required for "
+                    + "them to take effect.");
         }
 
         getSLF4JLogger().info("Configuration reloaded.");
@@ -274,7 +340,12 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         PluginConfig c = pluginConfig;
         return String.join(" ",
                 c.getDatabaseType(), c.getSqliteFile(), c.getDbHost(), String.valueOf(c.getDbPort()),
-                c.getDbName(), c.getDbUsername(), c.getDbPassword(), String.valueOf(c.getDbPoolSize()));
+                c.getDbName(), c.getDbUsername(), c.getDbPassword(), String.valueOf(c.getDbPoolSize()),
+                // Cross-server coordination is bound at startup exactly like the connection pool.
+                String.valueOf(c.isCrossServerEnabled()), c.getCrossServerServerId(),
+                c.getRedisHost(), String.valueOf(c.getRedisPort()), c.getRedisPassword(),
+                String.valueOf(c.isRedisSsl()), String.valueOf(c.getRedisDatabase()),
+                c.getRedisKeyPrefix());
     }
 
     /** Registers the plugin with bStats (<a href="https://bstats.org/plugin/bukkit/EnhancedEchest/32142">...</a>). */
@@ -315,6 +386,8 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         String migration = pluginConfig.isMigrationEnabled() ? "ON" : "OFF";
         String backup    = backupStatus();
         String folia     = scheduler.isFolia() ? "Folia" : "Paper";
+        String crossSrv  = redisCoordinator != null
+                ? "ON (" + redisCoordinator.serverId() + ")" : "OFF";
         String sep       = "——————————————[ EnhancedEchest ]——————————————";
 
         log.info("> {}", sep);
@@ -325,6 +398,7 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         log.info(">   Language  : {}", locale);
         log.info(">   Migration : {}", migration);
         log.info(">   Backup    : {}", backup);
+        log.info(">   X-Server  : {}", crossSrv);
         log.info(">");
         log.info("> {}", sep);
     }

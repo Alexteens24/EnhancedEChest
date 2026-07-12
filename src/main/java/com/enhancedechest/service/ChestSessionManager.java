@@ -433,6 +433,23 @@ public final class ChestSessionManager {
     }
 
     /**
+     * True while any chest of {@code owner} has a live session or an in-flight save/exclusive op.
+     * Read-only scan of the two concurrent maps, safe from any thread. The cross-server handover
+     * handler consults this before flushing + releasing an owner another server asked for: while a
+     * close-save is still in flight the handover simply waits for the requester's next ask, so the
+     * flush can never miss the final contents of a chest that was open at quit time.
+     */
+    public boolean hasActivity(UUID owner) {
+        for (SaveKey key : sessions.keySet()) {
+            if (key.owner().equals(owner)) return true;
+        }
+        for (SaveKey key : pendingSaves.keySet()) {
+            if (key.owner().equals(owner)) return true;
+        }
+        return false;
+    }
+
+    /**
      * Serializes arbitrary DB work for one (owner, index) behind any in-flight save/op for that key,
      * registering it in {@code pendingSaves} so a concurrent {@code open} waits for it. The work runs
      * on the async executor; the returned future completes with its result (or its failure).

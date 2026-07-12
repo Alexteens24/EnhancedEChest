@@ -58,9 +58,23 @@ Consequences: memory stays **proportional to the online-player count** (plus own
 commands, held at most one autosave interval); gameplay open/close costs zero queries once a player is
 loaded; a hard crash can lose at most one autosave interval of changes — and only for players online
 the whole time, since quitters are written back within seconds (the DB write on clean shutdown is
-guaranteed). **Cross-server sharing is still not supported**: while an owner is resident the cache is
+guaranteed). **Cross-server sharing is unsupported by default**: while an owner is resident the cache is
 authoritative and the quit write-back is delayed, so fast server switches on a shared database can
-overwrite each other. The user docs state this explicitly.
+overwrite each other. With `cross-server.enabled`, a Redis-backed
+`com.enhancedechest.crossserver.CrossServerCoordinator` closes exactly that hole by adding a
+distributed leg to the residency invariant — **resident ⇒ this server holds the owner's Redis lock**:
+`loadOwner` blocks on `acquireOwner` before the backend read and re-checks `isHeld` under the cache
+lock before flipping residency (a raced eviction release forces re-acquire + re-read); both eviction
+paths release (`beginRelease` inside the same lock hold that drops the rows, `finishRelease` — the
+network DEL + `rel` publish — outside it) and only ever evict flushed-clean owners, so the next
+acquirer always reads current SQL. Handover latency is bounded by pub/sub `req` messages: the waiting
+server re-asks every 500ms poll round and the holder flushes+evicts+releases as soon as the player is
+unpinned with no live/pending chest session (`ChestSessionManager.hasActivity`). Locks are never
+stolen — a timed-out acquire (10s) throws `CrossServerLockException`, surfacing like a failed SQL
+read; crashed holders free up via the 30s TTL (heartbeat every 10s, with a split-brain SEVERE log if a
+held key turns up foreign). `findExpired` skips non-resident candidates whose owner is locked by
+another server (that server's own sweep covers them). Single-server installs run on
+`CrossServerCoordinator.NOOP`, which collapses the whole protocol to no-ops.
 
 The SQL side implements the deliberately narrow **`StorageBackend`** interface (init/close, backup,
 `importRows`, per-player reads `loadChests`/`loadPlayer`, the whole-database reads

@@ -6,6 +6,13 @@ All notable changes to EnhancedEchest are recorded here, newest first.
 
 ### Added
 
+- **Cross-server support.** Several servers behind a proxy (Velocity, BungeeCord) can now share one database, so a player's ender chests follow them between servers. Off by default; enable it with the new `cross-server.enabled` setting.
+  - Requires a MySQL, MariaDB, or PostgreSQL database shared by every server, plus a shared Redis server (`cross-server.redis.*`). SQLite cannot be shared.
+  - Redis stores no chest data. It only tracks which server currently holds a player's data, so fast server switching can never lose or duplicate items.
+  - Give each server a unique name with `cross-server.server-id`, or leave it empty to generate one automatically at every startup.
+  - If Redis is unreachable at startup, or cross-server is enabled with SQLite, the plugin disables itself instead of running unsafely on the shared database.
+  - Admin commands that target a player who is online on another server fail with an error: view or edit them on the server they are playing on. Run `/ee import` with only one server of the network online.
+
 - Added migration from the `CustomEnderChest` plugin. Items keep their custom names, lore, and enchantments. `CustomEnderChest` gives each player a single ender chest, so it imports into EnhancedEchest's chest #1, the same target vanilla migration uses.
   - `/ee migrate customenderchest` imports every player with `CustomEnderChest` data.
   - `/ee migrate customenderchest <player>` imports a single player, online or offline.

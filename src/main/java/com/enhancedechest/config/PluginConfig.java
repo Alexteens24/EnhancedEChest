@@ -59,6 +59,18 @@ public final class PluginConfig {
      */
     private String tablePrefix;
 
+    // Cross-server (Redis-coordinated shared database)
+    private boolean crossServerEnabled;
+    /** This server's unique id in the Redis locks; auto-generated per boot when left empty. */
+    private String crossServerServerId;
+    private String redisHost;
+    private int redisPort;
+    private String redisPassword;
+    private boolean redisSsl;
+    private int redisDatabase;
+    /** Prefix of every Redis key/channel this plugin uses; sanitized like the table prefix. */
+    private String redisKeyPrefix;
+
     // SQLite
     private String sqliteFile;
 
@@ -113,6 +125,15 @@ public final class PluginConfig {
         autosaveIntervalMillis = Math.max(30_000L,
                 parseDuration(config.getString("database.autosave-interval", "5m"), "5m"));
 
+        crossServerEnabled  = config.getBoolean("cross-server.enabled", false);
+        crossServerServerId = config.getString("cross-server.server-id", "");
+        redisHost      = config.getString("cross-server.redis.host", "localhost");
+        redisPort      = config.getInt("cross-server.redis.port", 6379);
+        redisPassword  = config.getString("cross-server.redis.password", "");
+        redisSsl       = config.getBoolean("cross-server.redis.ssl", false);
+        redisDatabase  = config.getInt("cross-server.redis.database", 0);
+        redisKeyPrefix = sanitizeRedisPrefix(config.getString("cross-server.redis.key-prefix", "echest:"));
+
         dbHost     = config.getString("database.host", "localhost");
         dbPort     = config.getInt("database.port", 3306);
         dbName     = config.getString("database.database", "enhancedechest");
@@ -155,6 +176,16 @@ public final class PluginConfig {
     private static String sanitizeTablePrefix(String value) {
         String cleaned = value == null ? "" : value.replaceAll("[^A-Za-z0-9_]", "");
         return cleaned.isEmpty() ? "echest_" : cleaned;
+    }
+
+    /**
+     * Keeps only {@code [A-Za-z0-9_:.-]} from the configured Redis key prefix (a stray {@code |}
+     * would collide with the pub/sub message separator) and falls back to {@code echest:} if that
+     * leaves nothing usable.
+     */
+    private static String sanitizeRedisPrefix(String value) {
+        String cleaned = value == null ? "" : value.replaceAll("[^A-Za-z0-9_:.\\-]", "");
+        return cleaned.isEmpty() ? "echest:" : cleaned;
     }
 
     /** Parses a duration string, falling back to {@code fallback} (and ultimately a safe value) on error. */

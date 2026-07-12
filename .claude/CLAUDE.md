@@ -65,11 +65,26 @@ For the full design, read [ARCHITECTURE.md](ARCHITECTURE.md). For user-facing do
   after each autosave (`evictIdle`), and `CachedStorage.close()` does a final full flush at shutdown.
   Backup and `/ee import` flush first. The **residency invariant is load-bearing**: per-owner ops go
   through `withOwner` (residency re-check + op in one lock hold), dirty ⇒ resident, eviction takes only
-  clean owners — don't bypass it. Consequence: **cross-server sharing is still not supported**
-  (documented in user docs — don't claim otherwise). Storage methods stay synchronous; the
+  clean owners — don't bypass it. Consequence: **cross-server sharing is unsupported by default**, but
+  supported when `cross-server.enabled` (see the cross-server bullet below). Storage methods stay
+  synchronous; the
   `com.enhancedechest.service` layer is still the only place allowed to dispatch storage calls onto the
   async executor (shared `DbExecutor`, pool `EnhancedEchest-db`) — that convention is what keeps the
   dupe-safety ordering intact, don't bypass it.
+- **Cross-server (`cross-server.enabled`, default off):** a Redis-backed
+  `com.enhancedechest.crossserver.CrossServerCoordinator` extends the residency invariant with a
+  distributed leg — **resident ⇒ this server holds the owner's Redis lock** (`RedisCoordinator`:
+  `SET NX PX`, 30s TTL + heartbeat; acquired in `loadOwner` before the backend read with an `isHeld`
+  re-check under the cache lock; released only by the two eviction paths, after the owner flushed
+  clean — `beginRelease` under the cache lock / `finishRelease` outside it, keep that split). Handover
+  is pub/sub: a waiting server publishes `req` every poll round; the holder flushes+evicts+releases via
+  the handler wired in `EnhancedEchestPlugin`, skipped while the player is pinned there or
+  `ChestSessionManager.hasActivity(owner)` (the requester just re-asks). Locks are **never stolen** —
+  a timed-out acquire throws `CrossServerLockException` (fails like a bad SQL read); a crashed holder's
+  locks expire via TTL. Requires mysql/mariadb/postgres + reachable Redis, else the plugin disables
+  itself at startup. Single-server mode is `CrossServerCoordinator.NOOP` (never null-check — same
+  pattern as `Telemetry`). Jedis is shaded/relocated (`libs.jedis` + `libs.commonspool2` / `libs.json`
+  / `libs.gson`). Unit tests: `storage/CrossServerCacheTest`.
 - **Dupe-safety is load-bearing** — do not "optimize" away the model: one **shared `Inventory` per open
   chest** (so concurrent viewers can't dupe), load-fresh on first open, save on **last** viewer close,
   pending-save-wait on reopen. All open paths must funnel through `ChestSessionManager.open`; session

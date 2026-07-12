@@ -1,11 +1,13 @@
 package com.enhancedechest.storage;
 
+import com.enhancedechest.crossserver.CrossServerCoordinator;
 import com.enhancedechest.storage.ChestCacheState.DirtyBatch;
 import com.enhancedechest.storage.EnderChestStorage.RawChestRow;
 import com.enhancedechest.storage.EnderChestStorage.RawPlayerRow;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -39,12 +41,23 @@ import java.util.function.Supplier;
  * blocks gameplay reads/writes. Concurrent misses on the same owner are collapsed to one backend read
  * via {@link #loading}. Rows that fail to flush are re-marked dirty and retried on the next autosave.
  * Lock ordering is always {@code flushLock -> lock}.
+ *
+ * <p><b>Cross-server extension:</b> with {@code cross-server.enabled} the residency invariant gains a
+ * distributed leg — <i>resident ⇒ this server holds the owner's Redis lock</i>. {@link #loadOwner}
+ * acquires the lock (blocking, on the storage executor) before the backend read and re-checks
+ * {@link CrossServerCoordinator#isHeld} under {@link #lock} before flipping residency (an eviction's
+ * release may have raced the load; if so the rows are re-read after re-acquiring). Both eviction
+ * paths release the lock — {@code beginRelease} inside the same lock hold that drops the rows,
+ * {@code finishRelease} (the network I/O) after it — and only after the owner flushed clean, so the
+ * next server to acquire always reads current SQL. With the {@link CrossServerCoordinator#NOOP}
+ * coordinator all of this collapses to no-ops.
  */
 final class OwnerResidencyCache {
 
     private final StorageBackend backend;
     private final ChestCacheState state;
     private final Logger logger;
+    private final CrossServerCoordinator coordinator;
 
     private final Object lock = new Object();
     /** Owners whose rows are materialized in memory. Guarded by {@link #lock}. */
@@ -66,10 +79,12 @@ final class OwnerResidencyCache {
      */
     private final Set<UUID> quitQueue = ConcurrentHashMap.newKeySet();
 
-    OwnerResidencyCache(StorageBackend backend, ChestCacheState state, Logger logger) {
+    OwnerResidencyCache(StorageBackend backend, ChestCacheState state, Logger logger,
+                        CrossServerCoordinator coordinator) {
         this.backend = backend;
         this.state = state;
         this.logger = logger;
+        this.coordinator = coordinator;
     }
 
     // ---- online lifecycle (join/quit listener) ----
@@ -82,6 +97,11 @@ final class OwnerResidencyCache {
     /** Unmarks an owner as online. Their rows stay resident until flushed clean and evicted. */
     void unpin(UUID owner) {
         pinned.remove(owner);
+    }
+
+    /** Whether an owner is currently pinned (online here). Used by the cross-server handover check. */
+    boolean isPinned(UUID owner) {
+        return pinned.contains(owner);
     }
 
     // ---- residency core (the load-on-miss protocol) ----
@@ -170,21 +190,34 @@ final class OwnerResidencyCache {
         }
         try {
             String key = owner.toString();
-            List<RawChestRow> rows = backend.loadChests(key);
-            RawPlayerRow playerRow = backend.loadPlayer(key);
-            synchronized (lock) {
-                if (!resident.contains(owner)) {
-                    for (RawChestRow c : rows) {
-                        state.applyRawChest(c);
+            while (true) {
+                // Cross-server: hold the owner's distributed lock before reading their SQL rows
+                // (no-op on the NOOP coordinator). Blocking is fine — this runs on the storage
+                // executor. A failure (owner online on another server) propagates like a failed read.
+                coordinator.acquireOwner(owner);
+                List<RawChestRow> rows = backend.loadChests(key);
+                RawPlayerRow playerRow = backend.loadPlayer(key);
+                synchronized (lock) {
+                    // An eviction may have begun releasing the lock between our acquire and here
+                    // (beginRelease runs under this same lock, so this check is never stale). If it
+                    // did, our SQL read may predate that eviction's flush — re-acquire and re-read.
+                    if (!coordinator.isHeld(owner)) {
+                        continue;
                     }
-                    if (playerRow != null) {
-                        state.applyRawPlayer(playerRow);
+                    if (!resident.contains(owner)) {
+                        for (RawChestRow c : rows) {
+                            state.applyRawChest(c);
+                        }
+                        if (playerRow != null) {
+                            state.applyRawPlayer(playerRow);
+                        }
+                        resident.add(owner);
                     }
-                    resident.add(owner);
+                    loading.remove(owner);
                 }
-                loading.remove(owner);
+                mine.complete(null);
+                return;
             }
-            mine.complete(null);
         } catch (Throwable t) {
             synchronized (lock) {
                 loading.remove(owner);
@@ -272,11 +305,19 @@ final class OwnerResidencyCache {
                     throw e;
                 }
             }
+            boolean released = false;
             synchronized (lock) {
                 if (!pinned.contains(owner) && state.isClean(owner)) {
                     state.dropOwner(owner);
                     resident.remove(owner);
+                    if (coordinator.isHeld(owner)) {
+                        coordinator.beginRelease(owner);   // local intent, inside the lock hold
+                        released = true;
+                    }
                 }
+            }
+            if (released) {
+                coordinator.finishRelease(owner);          // network release, outside the lock
             }
         }
     }
@@ -298,9 +339,11 @@ final class OwnerResidencyCache {
         // them as deletes and wipe the owner from the database. Holding flushLock serializes against
         // that whole window. Ordering is flushLock -> lock, matching flushHoldingLock (no deadlock).
         synchronized (flushLock) {
+            List<UUID> released = new ArrayList<>();
+            int evicted;
             synchronized (lock) {
                 Set<UUID> dirtyOwners = state.dirtyOwners();
-                int evicted = 0;
+                evicted = 0;
                 Iterator<UUID> it = resident.iterator();
                 while (it.hasNext()) {
                     UUID owner = it.next();
@@ -310,9 +353,16 @@ final class OwnerResidencyCache {
                     state.dropOwner(owner);
                     it.remove();
                     evicted++;
+                    if (coordinator.isHeld(owner)) {
+                        coordinator.beginRelease(owner);   // local intent, inside the lock hold
+                        released.add(owner);
+                    }
                 }
-                return evicted;
             }
+            for (UUID owner : released) {
+                coordinator.finishRelease(owner);          // network release, outside the lock
+            }
+            return evicted;
         }
     }
 }

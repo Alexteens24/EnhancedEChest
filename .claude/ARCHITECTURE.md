@@ -34,8 +34,10 @@ offline players, expiry sweeps) and is authoritative for every owner it holds re
 `AutosaveService` flushes dirty rows to SQL on `database.autosave-interval` (default 5m) and then
 evicts flushed offline owners, each quitter is written back + evicted a few seconds after quit, and
 `CachedStorage.close()` flushes everything at shutdown. Memory stays proportional to online players.
-Cross-server sharing (multiple servers on one database) is still **not supported**. See
-[architecture/storage-and-schema.md](architecture/storage-and-schema.md).
+Cross-server sharing (multiple servers on one database) is **off by default**; with
+`cross-server.enabled` a Redis-backed owner-lock coordinator (`crossserver/`) makes the shared
+database safe — resident ⇒ this server holds the owner's Redis lock, released only after the owner
+flushed clean. See [architecture/storage-and-schema.md](architecture/storage-and-schema.md).
 
 ## Module map
 
@@ -75,6 +77,10 @@ com.enhancedechest
 │   ├── AutosaveService       periodic async flush + idle eviction, per-player write-back after quit
 │   ├── StorageFactory        picks the SQL backend from config.type (wrapped by CachedStorage)
 │   └── sql/                  AbstractSqlStorage (reads + batched flush, no per-row write DML) + Sqlite / Mysql / Postgres
+├── crossserver/
+│   ├── CrossServerCoordinator  contract + NOOP: distributed owner locks for shared-database mode
+│   ├── RedisCoordinator        Jedis impl: SET NX PX locks + TTL/heartbeat, req/rel pub-sub handover
+│   └── CrossServerLockException  timed-out acquire — surfaces like a failed SQL read
 ├── serialization/ContainerCodec     ItemStack[] ⇄ byte[] (parametric on size)
 ├── expiry/ExpirySweeper             async sweep of expired chests
 ├── migration/MigrationService       vanilla EC → chest #1 import (atomic, single-location)

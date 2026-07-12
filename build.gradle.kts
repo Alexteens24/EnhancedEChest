@@ -51,6 +51,8 @@ dependencies {
     shade("org.postgresql:postgresql:42.7.13")
     shade("org.bstats:bstats-bukkit:3.2.1")
     shade("dev.faststats.metrics:bukkit:0.27.2")
+    // Redis client for the cross-server owner-lock coordination (cross-server.enabled)
+    shade("redis.clients:jedis:5.2.0")
 
     // Paper bundles sqlite-jdbc on the server classpath; compileOnly is sufficient
     compileOnly("org.xerial:sqlite-jdbc:3.53.2.0")
@@ -133,6 +135,10 @@ tasks.shadowJar {
     relocate("com.ongres",       "com.enhancedechest.libs.ongres")
     relocate("org.bstats",          "com.enhancedechest.libs.bstats")
     relocate("dev.faststats",       "com.enhancedechest.libs.faststats")
+    relocate("redis.clients",       "com.enhancedechest.libs.jedis")
+    relocate("org.apache.commons.pool2", "com.enhancedechest.libs.commonspool2")
+    relocate("org.json",            "com.enhancedechest.libs.json")
+    relocate("com.google.gson",     "com.enhancedechest.libs.gson")
 
     mergeServiceFiles()
     // destinationDirectory.set(file("C:\\Users\\Admin\\Desktop\\Folia\\plugins"))

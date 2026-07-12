@@ -1,6 +1,6 @@
 # Main Configuration
 
-The `config.yml` file lives in `plugins/EnhancedEchest/`. It controls language, chest size, the storage backend, automatic backups, and migration behavior.
+The `config.yml` file lives in `plugins/EnhancedEchest/`. It controls language, chest size, temporary chests, the storage backend, cross-server mode, automatic backups, and migration behavior.
 
 ::: tip Apply changes without a restart
 After editing `config.yml`, run `/ee reload` in-game or from the console to apply your changes.
@@ -74,6 +74,29 @@ See the <a href="/docs/permissions#permission-granted-chests">Permissions</a> pa
 
 </ConfigGroup>
 
+<ConfigGroup name="temp-enderchest">
+<template #info>
+Controls temporary chests. When a chest is shrunk, deleted (without <code>force</code>), or expires with items still inside, those items move into a temporary chest that disappears once emptied or once it expires. Temporary chests are take-only: players can take items out but not put new ones in.
+</template>
+
+<ConfigProperty name="expiry" value="24h" type="string">
+How long a temporary chest lasts before it expires, along with any items still inside it. Time format: <code>20s</code>, <code>5m</code>, <code>1h</code>, or combined like <code>1d_2h_30m</code>. Units: <code>s m h d w mo y</code>.
+</ConfigProperty>
+
+<ConfigProperty name="check-interval" value="5m" type="string">
+How often the plugin scans for expired chests. Lower values remove expired chests sooner; the default is fine for almost every server.
+</ConfigProperty>
+
+<ConfigProperty name="deny-sound.enabled" value="true" type="boolean">
+Whether to play a sound when a player tries to put an item into a take-only temporary chest. Set to <code>false</code> for no sound.
+</ConfigProperty>
+
+<ConfigProperty name="deny-sound.key" value="minecraft:entity.villager.no" type="string">
+Which sound to play. Accepts any Minecraft sound id; the default is the villager "no" grunt.
+</ConfigProperty>
+
+</ConfigGroup>
+
 <ConfigGroup name="database">
 <template #info>
 Configures where ender chest contents are stored. SQLite works out of the box with no setup. See the <a href="/docs/database">Database</a> page for MySQL, MariaDB, and PostgreSQL setup.
@@ -117,6 +140,45 @@ Database password. Leave empty for no password.
 
 <ConfigProperty name="pool-size" value="10" type="number">
 Maximum number of pooled database connections. Only applies to MySQL, MariaDB, and PostgreSQL.
+</ConfigProperty>
+
+</ConfigGroup>
+
+<ConfigGroup name="cross-server">
+<template #info>
+Lets several servers behind a proxy share one database, so a player's ender chests follow them between servers. Needs a shared MySQL/MariaDB/PostgreSQL database and a shared Redis server. See <a href="/docs/database#cross-server">Cross-Server Support</a>. Changes in this section require a full server restart.
+</template>
+
+<ConfigProperty name="enabled" value="false" type="boolean">
+Turns cross-server mode on. Requires <code>database.type</code> <code>mysql</code>, <code>mariadb</code>, or <code>postgres</code>; the plugin refuses to start in cross-server mode on SQLite.
+</ConfigProperty>
+
+<ConfigProperty name="server-id" value="" type="string">
+A name for this server, unique across your network (for example <code>survival</code>). Leave empty to generate one automatically at every startup. Never give two servers the same name.
+</ConfigProperty>
+
+<ConfigProperty name="redis.host" value="localhost" type="string">
+Redis server address, reachable from every server of the network.
+</ConfigProperty>
+
+<ConfigProperty name="redis.port" value="6379" type="number">
+Redis port.
+</ConfigProperty>
+
+<ConfigProperty name="redis.password" value="" type="string">
+Redis password. Leave empty when Redis has no password.
+</ConfigProperty>
+
+<ConfigProperty name="redis.ssl" value="false" type="boolean">
+Connect to Redis over SSL/TLS.
+</ConfigProperty>
+
+<ConfigProperty name="redis.database" value="0" type="number">
+Redis database number (0 to 15 on a default Redis install).
+</ConfigProperty>
+
+<ConfigProperty name="redis.key-prefix" value="echest:" type="string">
+Prefix for the Redis keys this plugin uses. Only change it when several separate networks share one Redis server.
 </ConfigProperty>
 
 </ConfigGroup>
@@ -190,6 +252,16 @@ enderchest:
 permission-chests:
   enabled: true
 
+temp-enderchest:
+  # Lifetime of a temporary chest created on shrink/delete/expire-with-items.
+  expiry: 24h
+  # How often the plugin scans for expired chests.
+  check-interval: 5m
+  # Sound played to a player who tries to deposit into a take-only temporary chest.
+  deny-sound:
+    enabled: true
+    key: minecraft:entity.villager.no
+
 database:
   # Storage backend: sqlite | mysql | mariadb | postgres
   type: sqlite
@@ -204,6 +276,20 @@ database:
   username: root
   password: ""
   pool-size: 10
+
+cross-server:
+  # Share one database between several servers behind a proxy. Needs mysql/mariadb/postgres
+  # plus a shared Redis server. See the Database page for the full setup.
+  enabled: false
+  # Unique name per server. Leave empty to generate one at every startup.
+  server-id: ""
+  redis:
+    host: localhost
+    port: 6379
+    password: ""
+    ssl: false
+    database: 0
+    key-prefix: "echest:"
 
 backup:
   enabled: true

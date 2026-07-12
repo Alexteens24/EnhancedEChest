@@ -97,6 +97,36 @@ database:
   password: ""
   pool-size: 10
 
+cross-server:
+  # Let SEVERAL servers (e.g. behind a Velocity/BungeeCord proxy) share ONE database safely, so a
+  # player's ender chests follow them between servers. Requires BOTH of:
+  #   1. database.type mysql/mariadb/postgres, with every server pointing at the SAME database
+  #      (and the same table-prefix). SQLite cannot be shared — the plugin refuses to start
+  #      cross-server on it.
+  #   2. A Redis server reachable by every server (settings below). Redis stores no ender chest
+  #      data; it only coordinates which server currently "owns" a player's data, so two servers
+  #      can never overwrite each other.
+  # Changes here need a FULL SERVER RESTART (like the database connection settings above).
+  # When enabled and Redis is unreachable at startup, the plugin disables itself rather than run
+  # unsafely. Notes: run /ee import with only one server online; admin commands that target a
+  # player who is online on ANOTHER server will fail with an error (open/edit them there instead).
+  enabled: false
+  # A name for this server, unique across your network (e.g. "survival", "skyblock-2"). Leave empty
+  # to auto-generate one at every startup (works fine; a fixed name just makes logs easier to read
+  # and recovers locks faster after a crash). NEVER give two servers the same name.
+  server-id: ""
+  redis:
+    host: localhost
+    port: 6379
+    # Leave empty when Redis has no password.
+    password: ""
+    ssl: false
+    # Redis database number (0-15 on a default Redis install).
+    database: 0
+    # Prefix for the Redis keys/channel this plugin uses. Only change it if you run several
+    # SEPARATE networks on one Redis server (each network gets its own prefix).
+    key-prefix: "echest:"
+
 backup:
   # Automatically saves a copy of all ender chest data on a timer, so you can restore it if the
   # database ever gets corrupted or something goes wrong.

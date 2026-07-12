@@ -1,5 +1,6 @@
 package com.enhancedechest.storage;
 
+import com.enhancedechest.crossserver.CrossServerCoordinator;
 import com.enhancedechest.model.ChestKind;
 import com.enhancedechest.model.ChestSummary;
 import com.enhancedechest.model.EnderChestData;
@@ -39,24 +40,35 @@ import java.util.UUID;
  *       the duration; see that class for the load-bearing residency invariant and lock ordering.</li>
  * </ul>
  *
- * <p><b>Consequence — no cross-server sharing:</b> while an owner is resident this cache is
- * authoritative and the quit write-back is delayed, so two servers pointed at the same database can
- * still overwrite each other on fast server switches. Running multiple servers against one database
- * remains unsupported.
+ * <p><b>Cross-server sharing:</b> by default (the {@link CrossServerCoordinator#NOOP} coordinator)
+ * this cache is authoritative while an owner is resident and the quit write-back is delayed, so two
+ * servers pointed at the same database would overwrite each other on fast server switches — running
+ * multiple servers against one database is unsupported <i>unless</i> {@code cross-server.enabled} is
+ * on. In that mode a Redis-backed coordinator adds a distributed leg to the residency invariant
+ * (resident ⇒ this server holds the owner's lock; released only after the owner flushed clean), which
+ * is what makes the shared database safe. See {@link OwnerResidencyCache} and
+ * {@link CrossServerCoordinator}.
  */
 public final class CachedStorage implements EnderChestStorage {
 
     private final StorageBackend backend;
     private final Logger logger;
     private final Telemetry telemetry;
+    private final CrossServerCoordinator coordinator;
     private final ChestCacheState state = new ChestCacheState();
     private final OwnerResidencyCache cache;
 
     public CachedStorage(StorageBackend backend, Logger logger, Telemetry telemetry) {
+        this(backend, logger, telemetry, CrossServerCoordinator.NOOP);
+    }
+
+    public CachedStorage(StorageBackend backend, Logger logger, Telemetry telemetry,
+                         CrossServerCoordinator coordinator) {
         this.backend = backend;
         this.logger = logger;
         this.telemetry = telemetry;
-        this.cache = new OwnerResidencyCache(backend, state, logger);
+        this.coordinator = coordinator;
+        this.cache = new OwnerResidencyCache(backend, state, logger, coordinator);
     }
 
     // ---- lifecycle ----
@@ -91,6 +103,11 @@ public final class CachedStorage implements EnderChestStorage {
     /** Unmarks an owner as online. Their rows stay resident until flushed clean and evicted. */
     public void unpin(UUID owner) {
         cache.unpin(owner);
+    }
+
+    /** Whether an owner is currently pinned (online here). Used by the cross-server handover check. */
+    public boolean isPinned(UUID owner) {
+        return cache.isPinned(owner);
     }
 
     /** Writes every dirty row back to SQL. @return rows written/deleted (0 when nothing was dirty). */
@@ -208,21 +225,32 @@ public final class CachedStorage implements EnderChestStorage {
         // This avoids pulling every offline candidate's full chest rows + item blobs onto the heap each
         // sweep, and with no load there is no load-then-evict race to miss a beat.
         List<StorageBackend.ExpiredKey> candidates = backend.findExpired(now);
-        return cache.runLocked(() -> {
-            List<ExpiredRef> result = new ArrayList<>();
+        List<ExpiredRef> nonResident = new ArrayList<>();
+        List<ExpiredRef> result = cache.runLocked(() -> {
+            List<ExpiredRef> res = new ArrayList<>();
             for (StorageBackend.ExpiredKey key : candidates) {
                 UUID owner = UUID.fromString(key.playerUuid());
                 if (!cache.isResidentLocked(owner)) {              // non-resident ⇒ backend is current
-                    result.add(new ExpiredRef(owner, key.chestIndex(), ChestKind.fromCode(key.kind())));
+                    nonResident.add(new ExpiredRef(owner, key.chestIndex(), ChestKind.fromCode(key.kind())));
                 }
             }
             state.forEachRow((owner, index, row) -> {              // resident ⇒ memory wins
                 if (row.expiresAt != null && row.expiresAt <= now) {
-                    result.add(new ExpiredRef(owner, index, ChestKind.fromCode(row.kind)));
+                    res.add(new ExpiredRef(owner, index, ChestKind.fromCode(row.kind)));
                 }
             });
-            return result;
+            return res;
         });
+        // Cross-server: a non-resident candidate whose owner is locked by another server is online
+        // there — that server's own sweep sees the chest in its resident scan, so skip it here instead
+        // of stalling this sweep a full acquire timeout per owner. Checked outside the cache lock
+        // (Redis I/O); always false on the NOOP coordinator.
+        for (ExpiredRef ref : nonResident) {
+            if (!coordinator.isHeldElsewhere(ref.owner())) {
+                result.add(ref);
+            }
+        }
+        return result;
     }
 
     // ---- chest writes ----
