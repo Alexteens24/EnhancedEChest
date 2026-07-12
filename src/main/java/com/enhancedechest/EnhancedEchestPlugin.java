@@ -13,6 +13,7 @@ import com.enhancedechest.listener.PlayerQuitListener;
 import com.enhancedechest.listener.PlayerSettingsListener;
 import com.enhancedechest.listener.VanillaEnderChestListener;
 import com.enhancedechest.migration.AxVaultsMigrationService;
+import com.enhancedechest.migration.CustomEnderChestMigrationService;
 import com.enhancedechest.migration.DatabaseImportService;
 import com.enhancedechest.migration.MigrationService;
 import com.enhancedechest.migration.PlayerVaultsXMigrationService;
@@ -67,6 +68,7 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
     private MigrationService migrationService;
     private AxVaultsMigrationService axVaultsMigrationService;
     private PlayerVaultsXMigrationService playerVaultsXMigrationService;
+    private CustomEnderChestMigrationService customEnderChestMigrationService;
     private UpdateChecker updateChecker;
     private Scheduler scheduler;
     private Metrics metrics;
@@ -141,6 +143,8 @@ public final class EnhancedEchestPlugin extends JavaPlugin {
         axVaultsMigrationService = new AxVaultsMigrationService(storage, codec, getSLF4JLogger(), telemetry,
                 getDataFolder().getParentFile().toPath());
         playerVaultsXMigrationService = new PlayerVaultsXMigrationService(storage, codec, getSLF4JLogger(),
+                telemetry, getDataFolder().getParentFile().toPath());
+        customEnderChestMigrationService = new CustomEnderChestMigrationService(storage, codec, getSLF4JLogger(),
                 telemetry, getDataFolder().getParentFile().toPath());
 
         expirySweeper = new ExpirySweeper(spillService, storage, scheduler,

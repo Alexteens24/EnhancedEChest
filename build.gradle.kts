@@ -12,7 +12,7 @@ configurations {
 }
 
 group = "com.enhancedechest"
-version = "1.0.9"
+version = "1.0.10"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(21))
@@ -160,6 +160,7 @@ tasks.runServer {
     downloadPlugins {
         // modrinth("luckperms", "v5.5.53-bukkit")
         // modrinth("axvaults", "2.15.0")
+        // modrinth("custom-ender-chest", "Zo10TSW5")
         modrinth("viaversion", "5.10.0")
     }
     minecraftVersion("1.21.11")

@@ -1,6 +1,6 @@
 # Migration
 
-EnhancedEchest can import existing ender chest data into its own storage so nothing is lost when you install it. Three sources are supported: the **vanilla** ender chest, the **AxVaults** plugin, and the **PlayerVaultsX** plugin.
+EnhancedEchest can import existing ender chest data into its own storage so nothing is lost when you install it. Four sources are supported: the **vanilla** ender chest, the **AxVaults** plugin, the **PlayerVaultsX** plugin, and the **CustomEnderChest** plugin.
 
 ## From Vanilla Ender Chests
 
@@ -64,6 +64,31 @@ Both require the `enhancedechest.admin.migrate` permission. The import runs in t
 
 ::: tip Safe to re-run
 A vault is **never** imported over a chest that already holds items. If a player already has a chest at that number, that vault is reported as skipped and left untouched, so running the command twice will not duplicate or overwrite anything.
+:::
+
+## From CustomEnderChest {#customenderchest}
+
+EnhancedEchest can import ender chests from the [CustomEnderChest](https://modrinth.com/plugin/custom-ender-chest) plugin, including all items with their custom names, lore, and enchantments. This was tested against **CustomEnderChest 2.1.2**.
+
+Unlike AxVaults/PlayerVaultsX, CustomEnderChest gives each player a single ender chest (sized by their highest-ranked permission), not several numbered vaults, so it is imported into EnhancedEchest's own **chest #1**, matching the vanilla migration's target.
+
+### Before You Start
+
+The migration reads CustomEnderChest's player files directly, so one thing matters:
+
+- **CustomEnderChest must be set to YAML storage.** EnhancedEchest reads the per-player files under `CustomEnderChest/playerdata/`, which only exist when `storage.type: yml` is set in `CustomEnderChest/config.yml`. CustomEnderChest defaults to its embedded `h2` database instead, so switch it to `yml` and restart the source server first (the same one-time switch AxVaults migration already asks for), then migrate. The `mysql` backend is not read either.
+
+### Running It
+
+| Command | Effect |
+|---------|--------|
+| `/ee migrate customenderchest` | Import ender chests for every player with CustomEnderChest data |
+| `/ee migrate customenderchest <player>` | Import the ender chest for a single player (online or offline) |
+
+Both require the `enhancedechest.admin.migrate` permission. The import runs in the background and reports how many players were imported when it finishes.
+
+::: tip Safe to re-run
+A player's ender chest is **never** imported over chest #1 if it already holds items. If a player has already used their EnhancedEchest chest #1, the import is reported as skipped and left untouched, so running the command twice will not duplicate or overwrite anything.
 :::
 
 ## From PlayerVaultsX {#playervaultsx}

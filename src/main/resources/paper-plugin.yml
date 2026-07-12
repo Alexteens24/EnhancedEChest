@@ -16,7 +16,7 @@ permissions:
     description: Use /ee reload
     default: op
   enhancedechest.admin.migrate:
-    description: Use /ee migrate vanilla and /ee migrate axvaults
+    description: Use /ee migrate vanilla, axvaults, playervaultsx and customenderchest
     default: op
   enhancedechest.admin.import:
     description: Use /ee import (copy an old database backend into the active one)

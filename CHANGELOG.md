@@ -2,6 +2,16 @@
 
 All notable changes to EnhancedEchest are recorded here, newest first.
 
+## 1.0.10 - 2026-07-12
+
+### Added
+
+- Added migration from the `CustomEnderChest` plugin. Items keep their custom names, lore, and enchantments. `CustomEnderChest` gives each player a single ender chest, so it imports into EnhancedEchest's chest #1, the same target vanilla migration uses.
+  - `/ee migrate customenderchest` imports every player with `CustomEnderChest` data.
+  - `/ee migrate customenderchest <player>` imports a single player, online or offline.
+  - `CustomEnderChest` must be set to `storage.type: yml` before migrating; its `h2` (default) and `mysql` backends are not read.
+  - Safe to re-run: a player's chest #1 is never overwritten once it already holds items.
+
 ## 1.0.9 - 2026-07-11
 
 ### Added

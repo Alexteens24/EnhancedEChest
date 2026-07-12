@@ -3,6 +3,7 @@ package com.enhancedechest;
 import com.enhancedechest.command.EnderChestOpenCommand;
 import com.enhancedechest.command.admin.ChestAdminCommand;
 import com.enhancedechest.command.admin.MigrateAxVaultsCommand;
+import com.enhancedechest.command.admin.MigrateCustomEnderChestCommand;
 import com.enhancedechest.command.admin.MigratePlayerVaultsXCommand;
 import com.enhancedechest.command.admin.ChestTransferCommand;
 import com.enhancedechest.command.admin.ImportCommand;
@@ -407,6 +408,16 @@ public final class EnhancedEchestBootstrap implements PluginBootstrap {
                                         .then(Commands.argument("player", StringArgumentType.word())
                                                 .suggests(KNOWN_PLAYERS)
                                                 .executes(ctx -> MigratePlayerVaultsXCommand.executePlayer(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "player")))))
+                                // /ee migrate customenderchest [all|<player>] — import from CustomEnderChest
+                                .then(Commands.literal("customenderchest")
+                                        .executes(ctx -> MigrateCustomEnderChestCommand.executeAll(ctx.getSource()))
+                                        .then(Commands.literal("all")
+                                                .executes(ctx -> MigrateCustomEnderChestCommand.executeAll(ctx.getSource())))
+                                        .then(Commands.argument("player", StringArgumentType.word())
+                                                .suggests(KNOWN_PLAYERS)
+                                                .executes(ctx -> MigrateCustomEnderChestCommand.executePlayer(
                                                         ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "player"))))))
                         .then(Commands.literal("reload")
